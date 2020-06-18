@@ -11,18 +11,18 @@ class DiffusivityMeasurement:
         self.B_sweeps = []
         self.R_sweeps = []
         self.__RT_sweeps_per_B = {}
-        self.Bc2vsTfit = self.Bc2vsTfit()
-        self.RTfit = RTfit()
 
         self.diffusivity = 0
         self.diffusivity_err = 0
         self.default_B_array = np.array([0.0, 0.2, 0.4, 0.6, 0.8, 1.0])
         self.B_bin_size = 0.01 #
         self.sheet_resistance_geom_factor = 4.53 # geometry factor to determine sheet resistance 4.53=pi/ln(2)
-        self.sheet_resistance = 0 # calculated sheet resistance of the film
-
+                                                 # calculated sheet resistance of the film
         self._read_B_sweeps_to_properties()
         self.__rearrange_B_sweeps()
+        self.sheet_resistance = self.get_sheet_resistance()
+        self.Bc2vsTfit = self.Bc2vsTfit()
+        self.RTfit = RTfit(self.__RT_sweeps_per_B, self.sheet_resistance/self.sheet_resistance_geom_factor)
 
     def __import_file_mat(self):
         """reads string with filename and returns .mat data file as list of lists"""
@@ -92,6 +92,15 @@ class DiffusivityMeasurement:
     def __array_dict_w_err(self, B, selector, error_pp=1, error_std=0):
         return {key:value[selector] * error_pp + error_std for key, value in self.__RT_sweeps_per_B.items() if key in B}
 
+    def get_sheet_resistance(self, upp_lim=450):
+        ## TODO: check for correctness of formulas!!
+        max_R_NC = np.max(self.__flatten_list(self.R_sweeps))
+        if max_R_NC < 450:
+            sheet_resistance = self.sheet_resistance_geom_factor * max_R_NC
+        else:
+            sheet_resistance = self.sheet_resistance_geom_factor * np.max(self.__RT_sweeps_per_B[0.0]['R'])
+        return sheet_resistance
+
     def R_vs_B(self, B_sweep_index, err=False):
         if err:
             B_err = self.B_sweeps[B_sweep_index] * self.Bc2vsTfit.B_field_meas_error_pp + self.Bc2vsTfit.B_field_meas_error_round
@@ -99,8 +108,14 @@ class DiffusivityMeasurement:
             return (self.B_sweeps[B_sweep_index], self.R_sweeps[B_sweep_index], B_err, R_err)
         else: return (self.B_sweeps[B_sweep_index], self.R_sweeps[B_sweep_index])
 
-    def Bc2_vs_T(err=False):
-        pass
+    def Bc2_vs_T(self, err=False):
+        if not err:
+            return (self.Bc2vsT.Bc2vsT['T'], self.Bc2vsT.Bc2vsT['Bc2'])
+        elif err:
+            return (self.Bc2vsT.Bc2vsT['T'], self.Bc2vsT.Bc2vsT['Bc2'],
+                    self.Bc2vsT.Bc2vsT['T_low_err'], self.Bc2vsT.Bc2vsT['T_upp_err']
+                    self.Bc2vsT.Bc2vsT['B_err'])
+        else: raise TypeError('"err" function parameter must be boolean type')
 
     def calc_diffusivity(fit_low_lim=None, fit_upp_lim=None):
         pass
@@ -112,7 +127,14 @@ class DiffusivityMeasurement:
         def __init__(self):
             self.low_lim = None
             self.upp_lim = None
-            
+            self.D = 0
+            self.dBc2dT = 0
+            self.B_0 = 0
+            self.err_D = 0
+            self.err_dBc2dT = 0
+            self.r_squared = 0
+            self.Bc2vsT = {}
+
             self.B_field_meas_error_pp = 0.02 # variation of 1% in voltage monitor results in variation of 1% in Bfield
             self.B_field_meas_error_round = 0.001 # tbreviewed, in Tesla, measurement error + rounding error
 
@@ -124,6 +146,9 @@ class RTfit():
     """docstring for RTfit."""
 
     def __init__(self):
+        self.fit_function_type = "richards"
+        self.fit_function_T_default_spacing = 0.1
+
         self.T_meas_error_pp = 0.0125 # in percent, estimated interpolation error
         self.T_meas_error_std = 0.02 # standard deviation of measurements at 4Kelvin
         self.R_meas_error_pp = 0.017 # relative resistance error from resistance measurement
