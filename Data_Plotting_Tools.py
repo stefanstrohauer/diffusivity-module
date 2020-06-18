@@ -9,9 +9,9 @@
 #       format_version: '1.3'
 #       jupytext_version: 1.4.2
 #   kernelspec:
-#     display_name: Python 3
+#     display_name: jupyterenv
 #     language: python
-#     name: python3
+#     name: jupyterenv
 # ---
 
 # %% [markdown]
@@ -154,8 +154,10 @@ print('Select from these columns: ', list(quick_data)) # prints column names to 
 %matplotlib widget
 
 # plot PDF
-pdfname = 'H:\\Documents_H\\BA\\Schreiben\\Thesis_BA_Noah_Ploch\\Thesis\\figures\\Setup\\plot.pdf'
-pdfname = 'C:\\Users\\Noah.Ploch\\OneDrive - Walter Schottky Institut\\Plots\\use\\Meas_proc.pdf'
+#pdfname = 'H:\\Documents_H\\BA\\Schreiben\\Thesis_BA_Noah_Ploch\\Thesis\\figures\\Setup\\plot.pdf'
+#pdfname = 'C:\\Users\\Noah.Ploch\\OneDrive - Walter Schottky Institut\\Plots\\use\\200610_equalibration_test_up.pdf'
+pdfname = '\\\\file\\e24\\Projects\\FinleyLab\\_IQPGroup\\_SSPDs\\Data\\Diffusivity\\Data_evaluated\\Superconducting_magnet_tests\\' \
+            '200610_holding_zero_tesla__file_1T_down_02.pdf'
 
 pdf = PdfPages(pdfname)
 
@@ -166,11 +168,11 @@ ax=fig.add_subplot(111)
 #fig, ax1 = plt.subplots()
 
 x_header = 't [s]' #'T_sample [K]'#'T_diode [K]'#'t [s]' # 
-y1_header =  'T_diode [K]'#'U_diode [V]'#'T_sample [K]'#'T_diode [K]'#'R_film [Ohm]' #
-y2_header = 'T_sample [K]'#'R_film [Ohm]' # U_sample [V] 
+y1_header =  'B_curr_meas [T]'#'T_diode [K]'#'U_diode [V]'#'T_sample [K]'#'T_diode [K]'#'R_film [Ohm]' #
+y2_header = 'B_hall_meas [T]'#'T_sample [K]'#'R_film [Ohm]' # U_sample [V] 
 
-y1_legend = r'PCB diode'
-y2_legend = r'sample diode'
+y1_legend = r'determined from current'#r'PCB diode'
+y2_legend = r'determined with hall sonde'#r'sample diode'
 title = 'Cooldown Sample 200306: 20°C, 10.5%, 100nm'
 x_label = r'Time / \si{\second}'
 y_label =  r'Resistance / \si{\ohm}'
@@ -178,12 +180,12 @@ y_label =  r'Resistance / \si{\ohm}'
 #x_label =  r'Temperature / \si{\kelvin}'
 y2_label = r'Temperature / \si{\kelvin}'
 # x_label = r'Time / \si{\second}'
-# y_label =  r'Magnetic field / \si{\tesla}'
+y_label =  r'Magnetic field / \si{\tesla}'
 # y2_label = r'Error / \si{\percent}'
 
 # x_label = r'Voltage / \si{\volt}'
 # y_label =  r'Time / \si{\second}'
-marker = 's'
+marker = '-'
 # x_header = 't [s]'
 # y1_header = 'T_diode [K]'#'R_film [Ohm]' # U_diode [V]
 # y2_header = 'T_sample [K]' # U_sample [V] 
@@ -277,24 +279,26 @@ marker = 's'
 # ax.hlines(22.5,T1,T2, color=color[4], linewidth=1, label = r'$\Delta T_\text{c} = \SI{'+format_T_legend.format(T2-T1)+r'}{\kelvin}$')
 
 # normal plotting of quickdata
-#plt.plot(quick_data[[x_header]].to_numpy()[5:], quick_data[[y1_header]].to_numpy()[5:], marker, ms=1, mew=0, label=y1_legend)
-plt.plot(quick_data[[x_header]].to_numpy()[5:], quick_data[[y2_header]].to_numpy()[5:], marker, ms=1, mew=0, label=y2_legend)
+plt.plot(quick_data[[x_header]].to_numpy(), quick_data[[y1_header]].to_numpy(), marker, ms=1, mew=0, label=y1_legend)
+plt.plot(quick_data[[x_header]].to_numpy(), quick_data[[y2_header]].to_numpy(), marker, ms=1, mew=0, label=y2_legend)
 #plt.plot(quick_data[[x_header]].to_numpy(), quick_data[[y1_header]].to_numpy(), marker, ms=2, mew=0)#label=y1_legend
 #plt.plot(quick_data[[x_header]].to_numpy(), quick_data[[y2_header]].to_numpy(), marker,ms=1, mew=0, label=y2_legend)
 #plt.plot(quick_data[[y2_header]].to_numpy(), marker, label=y2_legend)
 #plt.plot(t, abs((Td-Ts)/Ts), '-', label="diode-sample error")
 ax.tick_params(direction='in', bottom=True, top=True, left=True, right=True)
-legend = ax.legend(loc='upper left', markerscale=3, handletextpad=0.8, handlelength=0.9, labelspacing=0.5, frameon=False, columnspacing=1)
+legend = ax.legend(loc='best', markerscale=3, handletextpad=0.8, handlelength=0.9, labelspacing=0.5, frameon=False, columnspacing=1)
 # legend.get_frame().set_linewidth(0.0)
 #plt.title(title)
 #ax1.set_xlabel(x_label)
 plt.xlabel(x_label)
+plt.xlim(55,150)
+plt.ylim(-0.005,0.005)
 #plt.xlim(130,300)
 #plt.xlim(610,640)
 #plt.xlim(2700,3300)
 #plt.xlim(11.2,11.5)
 #plt.xlim(xlimits)
-plt.ylabel(y2_label)
+plt.ylabel(y_label)
 
 
 # plot widget
@@ -382,7 +386,7 @@ legend_plotting = [r'Film not XRD-measured', r'Film XRD-measured', r'derived fro
 # plot PDF
 pdfname = 'H:\\Documents_H\\BA\\Schreiben\\Thesis_BA_Noah_Ploch\\Thesis\\figures\\Setup\\plot.pdf'
 pdfname = 'C:\\Users\\Noah.Ploch\\OneDrive - Walter Schottky Institut\\Documents_Noah_OD\\Working_student\\Post_evaluation_diffusivity_until0420\\'\
-            'Resistivity_vs_diff_log_ox_4nm_and_all.pdf'
+            'Resistivity_vs_diff_log_ox_3.115nm_success_scaled_4nm_and_all.pdf'
 
 pdf = PdfPages(pdfname)
 
@@ -448,7 +452,7 @@ plt.ylabel(y_label)
 # plt.ylim(-30, 6500)
 
 # plt.xlim(0.27,0.78)
-plt.ylim(2.1,3.1)
+plt.ylim(1.9,2.45)
 
 #plot PDF
 plt.tight_layout()
@@ -673,5 +677,58 @@ plt.ylabel('Frequency / counts')
 maxfreq = n.max()
 # Set a clean upper y-axis limit.
 plt.ylim(ymax=np.ceil(maxfreq / 10) * 10 if maxfreq % 10 else maxfreq + 10)
+
+# %% [markdown]
+# ## Calculate Calibration breakpoints for Cernox bare-chip
+# The Cernox sensors are calibrated through breakpoint pairs of sensor value and temperature value. The sensor values must be expressed in log(Ohm). Here we take the temperature values of a calibrated sensor and compare them to the sensor values of an uncalibrated bare-chip. 
+
+# %%
+%gui qt5
+default_path = '\\\\file\\e24\\Projects\\FinleyLab\\_IQPGroup\\_SSPDs\\Data\\Calibration data\\Temperature sensors\\Cernox sensors\\self_calibrated'
+filename = PureWindowsPath(default_path)
+default_path = Path(filename)
+filename = QFileDialog.getOpenFileName(None, 'Import file', str(default_path),"Text files (*.csv *.dat *.txt)")
+print(filename[0])
+file_import = Path(filename[0])
+#quick_data = np.loadtxt(file_import, skiprows=1)
+calib_data = pd.read_csv(file_import, sep=r'\t\s*', engine='python', decimal='.')
+#print(quick_data)
+#quick_data.replace(['nan', 'None', 'NaN'], '', inplace=True)
+#calib_data = calib_data.apply(pd.to_numeric)
+print('Select from these columns: ', list(calib_data)) # prints column names to be used in cell 'Plot'
+
+# %%
+#print(calib_data)
+Temperature_values = calib_data['T [K]']
+sensor_R_values = np.log10(calib_data['R [Ohm]'])
+#print(Temperature_values, sensor_R_values)
+
+T_list = [float(Temperature_values[0])]
+R_list = [sensor_R_values[0]]
+print(np.max(sensor_R_values))
+print(np.min(sensor_R_values))
+value_spacing = (np.max(sensor_R_values)-np.min(sensor_R_values))/200
+
+r_bef = sensor_R_values[0]
+#print(r_bef)
+i=0
+for t,r in zip(Temperature_values, sensor_R_values):
+    if (r_bef - r >= value_spacing) and r <= np.max(sensor_R_values):
+        T_list.append(float(t))
+        R_list.append(r)
+        r_bef=r
+    else: i+=1
+        
+print(i)
+    
+print("Value spacing: ", value_spacing)
+# plt.plot(Temperature_values, sensor_R_values)
+#print(T_list, R_list)
+print(len(T_list), len(R_list))
+
+path_calib = '\\\\file\\e24\\Projects\\FinleyLab\\_IQPGroup\\_SSPDs\\Data\\Calibration data\\Temperature sensors\\Cernox sensors\\self_calibrated\\Calibration_X000001.txt'
+Calib_dict = {'Units': ['%.5f' % round(i,5) for i in R_list[::-1]], 'Temperature (K)': ['%.3f' % round(i,5) for i in T_list[::-1]]} # change Tc, only raw data
+df = pd.DataFrame(Calib_dict)
+df.to_csv(Path(path_calib), sep=' ')
 
 # %%
