@@ -18,7 +18,7 @@
 # ## Import libraries
 
 # %%
-from PyQt5.QtWidgets import QFileDialog  
+from PyQt5.QtWidgets import QFileDialog
 import json as js
 import numpy as np
 import pandas as pd
@@ -28,7 +28,7 @@ from scipy.ndimage import gaussian_filter
 from scipy.optimize import curve_fit
 from scipy.stats import norm
 from scipy.special import erf
-from scipy.constants import elementary_charge, Boltzmann 
+from scipy.constants import elementary_charge, Boltzmann
 from math import pi
 from math import *
 import matplotlib as mpl
@@ -68,7 +68,7 @@ def figsize(scale):
     fig_height = fig_width*golden_mean              # height in inches
     # splitted plots
     #fig_width = fig_width_pt*inches_per_pt*0.4    # width in inches
-    #fig_height = fig_width*0.9 
+    #fig_height = fig_width*0.9
     fig_size = [fig_width,fig_height]
     return fig_size
 
@@ -129,7 +129,7 @@ format_T_legend = '{:1.2f}'
 # ### Quick Plotting
 
 # %% [markdown]
-# #### Search and import file 
+# #### Search and import file
 
 # %%
 %gui qt5
@@ -167,9 +167,9 @@ ax=fig.add_subplot(111)
 
 #fig, ax1 = plt.subplots()
 
-x_header = 't [s]' #'T_sample [K]'#'T_diode [K]'#'t [s]' # 
+x_header = 't [s]' #'T_sample [K]'#'T_diode [K]'#'t [s]' #
 y1_header =  'B_curr_meas [T]'#'T_diode [K]'#'U_diode [V]'#'T_sample [K]'#'T_diode [K]'#'R_film [Ohm]' #
-y2_header = 'B_hall_meas [T]'#'T_sample [K]'#'R_film [Ohm]' # U_sample [V] 
+y2_header = 'B_hall_meas [T]'#'T_sample [K]'#'R_film [Ohm]' # U_sample [V]
 
 y1_legend = r'determined from current'#r'PCB diode'
 y2_legend = r'determined with hall sonde'#r'sample diode'
@@ -188,7 +188,7 @@ y_label =  r'Magnetic field / \si{\tesla}'
 marker = '-'
 # x_header = 't [s]'
 # y1_header = 'T_diode [K]'#'R_film [Ohm]' # U_diode [V]
-# y2_header = 'T_sample [K]' # U_sample [V] 
+# y2_header = 'T_sample [K]' # U_sample [V]
 
 # y1_legend = r'PCB diode'
 # y2_legend = r'sample diode'
@@ -257,7 +257,7 @@ marker = '-'
 # T2 = x[bisect_left(y1, 0.9*RNC)]
 # R1 = y1[bisect_left(y1, 0.1*RNC)]
 # R2 = y1[bisect_left(y1, 0.9*RNC)]
-# T05= x[bisect_left(y1, RNC/2)] 
+# T05= x[bisect_left(y1, RNC/2)]
 # R05= y1[bisect_left(y1, RNC/2)]
 # print(np.sum(np.isnan(x)))
 # print(RNC, RSC, T1, T2)
@@ -337,7 +337,7 @@ print('Select from these columns: ', list(quick_data)) # prints column names to 
 # ### Prepare data
 
 # %%
-x_header = 'diffusivity [cm^2/s]'#'d (nm)'#'conductivity [1/(Ohm*cm)]' 
+x_header = 'diffusivity [cm^2/s]'#'d (nm)'#'conductivity [1/(Ohm*cm)]'
 y1_header =  'resistivity [uOhm*cm] oxide'# 'resistivity [uOhm*cm]'#     #'resistivity [uOhm*cm] oxide' 'conductivity [1/(Ohm*cm)] oxide'  #'conductivity [1/(Ohm*cm)]'#
 x_error =  'Error_diff'# 'Error_thick'#'Error_con'
 y1_error = 'Error_res'#'Error_con', 'Error_res', 'Error_con_ox', 'Error_res_ox'
@@ -398,14 +398,14 @@ for i,j in zip(data_plotting, legend_plotting):
     y_val = i[[y1_header]].to_numpy()
     x_er = i[[x_error]].to_numpy()
     y_er = i[[y1_error]].to_numpy()
-    
+
 #     y_val = 1/i[[x_header]].to_numpy()
 #     x_val = i[[y1_header]].to_numpy()
 #     plt.plot(x_val, y_val, 'o', ms=2, label=j)
 #     ax.errorbar(x_val, y_val, xerr=x_er, yerr=y_er,\
 #     fmt='o', elinewidth=0.6, capsize=1.5, capthick=0.6, ms=2, label=j) #ms=2, mew=0
 
-    
+
 plot_data_no_4nm = plot_data.loc[plot_data['d (nm)'] != 4]
 
 # Berechne Geraden für alle DP und DP ohne 4nm
@@ -533,7 +533,7 @@ j=0
 for i in quick_data:
     if j==70:
         plt.plot(i[[x_header]].to_numpy()-x_offset[3], i[[y2_header]].to_numpy(), marker, label = y1_legend[j])
-    else:   
+    else:
         #plt.plot(i[[x_header]].to_numpy(), i[[y1_header]].to_numpy(), marker, label=y1_legend[j])
         color = plt.rcParams['axes.prop_cycle'].by_key()['color'][j]
         #plt.plot(i[[x_header]].to_numpy(), i[[y1_header]].to_numpy(), marker, label = y1_legend[j], color=color)
@@ -604,7 +604,7 @@ for i in range(len(quick_data)):
     x_2=x[x>=x_offset[i]]-x_offset[i]
     y_2=y[x>=x_offset[i]]
     x=x_2[y_2>=6.5]
-    y=y_2[y_2>=6.5] 
+    y=y_2[y_2>=6.5]
     x_f=x[x>=x_2_off[j]]-x_2_off[j]
     y_f=y[x>=x_2_off[j]]
     plt.plot(x_f, y_f, marker, label=y1_legend[j])
@@ -680,7 +680,7 @@ plt.ylim(ymax=np.ceil(maxfreq / 10) * 10 if maxfreq % 10 else maxfreq + 10)
 
 # %% [markdown]
 # ## Calculate Calibration breakpoints for Cernox bare-chip
-# The Cernox sensors are calibrated through breakpoint pairs of sensor value and temperature value. The sensor values must be expressed in log(Ohm). Here we take the temperature values of a calibrated sensor and compare them to the sensor values of an uncalibrated bare-chip. 
+# The Cernox sensors are calibrated through breakpoint pairs of sensor value and temperature value. The sensor values must be expressed in log(Ohm). Here we take the temperature values of a calibrated sensor and compare them to the sensor values of an uncalibrated bare-chip.
 
 # %%
 %gui qt5
@@ -718,9 +718,9 @@ for t,r in zip(Temperature_values, sensor_R_values):
         R_list.append(r)
         r_bef=r
     else: i+=1
-        
+
 print(i)
-    
+
 print("Value spacing: ", value_spacing)
 # plt.plot(Temperature_values, sensor_R_values)
 #print(T_list, R_list)
@@ -730,5 +730,90 @@ path_calib = '\\\\file\\e24\\Projects\\FinleyLab\\_IQPGroup\\_SSPDs\\Data\\Calib
 Calib_dict = {'Units': ['%.5f' % round(i,5) for i in R_list[::-1]], 'Temperature (K)': ['%.3f' % round(i,5) for i in T_list[::-1]]} # change Tc, only raw data
 df = pd.DataFrame(Calib_dict)
 df.to_csv(Path(path_calib), sep=' ')
+
+# %% [markdown]
+# ### Plot calibration curves from xls file
+
+# %%
+#%gui qt5
+default_path = '\\\\file\\e24\\Projects\\FinleyLab\\_IQPGroup\\_SSPDs\\Data\\Diffusivity\\Data_measured\\Cernox sensor calibration\\'
+filename = PureWindowsPath(default_path)
+default_path = Path(filename)
+filename = QFileDialog.getOpenFileNames(None, 'Import file', str(default_path),"XLS files (*.xlsx *.xls)")
+filename = filename[0]
+#print(filename)
+calib_data2 = []
+for i in filename:
+    print(i)
+    calib_data_buf = pd.read_excel(i, header=3, usecols=(0,1,2))
+#     calib_data2.replace(['nan', 'None', 'NaN'], '', inplace=True)
+#     calib_data2 = data.apply(pd.to_numeric)
+    calib_data2.append(calib_data_buf)
+    print('Select from these columns: ', list(calib_data_buf)) # prints column names to be used in cell 'Plot'
+
+# %%
+%matplotlib
+
+filename = ['//file/e24/Projects/FinleyLab/_IQPGroup/_SSPDs/Data/Diffusivity/Data_measured/Cernox sensor calibration/constant_warmup_0Vheat_1.4K_to_RT.xls',
+            '//file/e24/Projects/FinleyLab/_IQPGroup/_SSPDs/Data/Diffusivity/Data_measured/Cernox sensor calibration/constant_warmup_0Vheat_4.15K_to_20K_first_test.xls',
+            '//file/e24/Projects/FinleyLab/_IQPGroup/_SSPDs/Data/Diffusivity/Data_measured/Cernox sensor calibration/warmup_SD+BR_from_LT_constant pumping.xls',
+            '//file/e24/Projects/FinleyLab/_IQPGroup/_SSPDs/Data/Diffusivity/Data_measured/Cernox sensor calibration/warmup_SD+BR_from_LT_onlyShortHeFlooding.xls']
+calib_data2 = []
+for i in filename:
+    print(i)
+    calib_data_buf = pd.read_excel(i, header=3, usecols=(0,1,2))
+#     calib_data2.replace(['nan', 'None', 'NaN'], '', inplace=True)
+#     calib_data2 = data.apply(pd.to_numeric)
+    calib_data2.append(calib_data_buf)
+
+fig=plt.figure()
+ax=fig.add_subplot(111)
+
+
+# plot PDF
+pdfname = '\\\\file\\e24\\Projects\\FinleyLab\\_IQPGroup\\_SSPDs\\Data\\Diffusivity\\Data_measured\\Cernox sensor calibration\\' \
+          '\\plots\\plot_all_4_calib_curves_edit.pdf'
+pdf = PdfPages(pdfname)
+
+x_header = 'Time'# 't [s]'#'raw_T' #
+y1_header = 'Input A'#'T_sample [K]'#'raw_B' #'TS_diode[K]'#'T_diode [K]'
+#y1_legend = [r'$\SI{0}{\milli\tesla}$', r'$\SI{0.66}{\milli\tesla}$', r'$\SI{1.17}{\milli\tesla}$', r'$\SI{10.2}{\milli\tesla}$', r'$\SI{100.3}{\milli\tesla}$', r'$\SI{0}{\tesla}$ r1', r'$\SI{0}{\tesla}$ r2', r'$\SI{0}{\tesla}$ r3']
+
+x_label = r'Time / \si{\second}'
+y_label =  r'Temperature / \si{\kelvin}'
+marker = '-'
+
+
+
+j=0
+for i in calib_data2:
+    if j==70:
+        plt.plot(i[[x_header]].to_numpy()-x_offset[3], i[[y2_header]].to_numpy(), marker, label = y1_legend[j])
+    else:
+        #plt.plot(i[[x_header]].to_numpy(), i[[y1_header]].to_numpy(), marker, label=y1_legend[j])
+        color = plt.rcParams['axes.prop_cycle'].by_key()['color'][j]
+        #plt.plot(i[[x_header]].to_numpy(), i[[y1_header]].to_numpy(), marker, label = y1_legend[j], color=color)
+        x = i[[x_header]].to_numpy()
+        y = i[[y1_header]].to_numpy()
+        x = x[y<=20]
+        y = y[y<=20]
+        plt.plot(x, y, marker, color=color, label = j)
+    j+=1
+ax.tick_params(direction='in', bottom=True, top=True, left=True, right=True)
+legend = ax.legend(loc='lower right', handlelength=2.5, labelspacing=0.5, frameon=False, columnspacing=1)
+legend.get_frame().set_linewidth(0.0)
+#plt.title(title)
+plt.xlabel(x_label)
+plt.ylabel(y_label)
+#plt.xlim(0, )
+#plt.ylim(1,20)
+# plot widget
+# fig.canvas.layout.width = '7in'
+# fig.canvas.layout.height= '6in'
+
+#plot PDF
+plt.tight_layout()
+pdf.savefig(bbox_inches='tight')
+pdf.close()
 
 # %%
