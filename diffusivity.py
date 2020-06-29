@@ -113,11 +113,17 @@ class DiffusivityMeasurement:
             return (self.Bc2vsT.Bc2vsT['T'], self.Bc2vsT.Bc2vsT['Bc2'])
         elif err:
             return (self.Bc2vsT.Bc2vsT['T'], self.Bc2vsT.Bc2vsT['Bc2'],
-                    self.Bc2vsT.Bc2vsT['T_low_err'], self.Bc2vsT.Bc2vsT['T_upp_err']
+                    self.Bc2vsT.Bc2vsT['T_low_err'], self.Bc2vsT.Bc2vsT['T_upp_err'],
                     self.Bc2vsT.Bc2vsT['B_err'])
         else: raise TypeError('"err" function parameter must be boolean type')
 
     def calc_diffusivity(fit_low_lim=None, fit_upp_lim=None):
+        pass
+
+    def fit_function_parameters(arg):
+        pass
+
+    def fit_function(arg):
         pass
 
 
@@ -148,15 +154,39 @@ class RTfit():
     def __init__(self):
         self.fit_function_type = "richards"
         self.fit_function_T_default_spacing = 0.1
+        self.T = 0
+        self.R = 0
 
         self.T_meas_error_pp = 0.0125 # in percent, estimated interpolation error
         self.T_meas_error_std = 0.02 # standard deviation of measurements at 4Kelvin
         self.R_meas_error_pp = 0.017 # relative resistance error from resistance measurement
 
-    def fit_function_parameters(arg):
+
+    def import_data(self, arg):
         pass
 
-    def fit_function(arg):
+    def read_RT_data(self, data):
+        if type(data) is dict:
+            self.T, self.R = (data['T'], data['R'])
+        elif type(data) is numpy.ndarray:
+            shape = np.shape(data)
+            if shape[0] is 2:
+                self.T, self.R = (data[0,:], data[1,:])
+            elif shape[1] is 2:
+                self.T, self.R = (data[:,0], data[:,1])
+            else: raise ValueError('array has the shape ' + str(shape))
+
+
+    def define_fitting_parameters(arg):
+        pass
+
+    def __fit_data(arg):
+        pass
+
+    def richards(arg):
+        pass
+
+    def gauss_cdf(arg):
         pass
 
     def Tc(arg):
