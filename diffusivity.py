@@ -22,7 +22,8 @@ class DiffusivityMeasurement:
         self.__rearrange_B_sweeps()
         self.sheet_resistance = self.get_sheet_resistance()
         self.Bc2vsTfit = self.Bc2vsTfit()
-        self.RTfit = RTfit(self.__RT_sweeps_per_B, self.sheet_resistance/self.sheet_resistance_geom_factor)
+        self.RTfit = RTfit()
+        #self.RTfit.read_RT_data(self.__RT_sweeps_per_B[4.0])
 
     def __import_file_mat(self):
         """reads string with filename and returns .mat data file as list of lists"""
@@ -151,11 +152,13 @@ class DiffusivityMeasurement:
 class RTfit():
     """docstring for RTfit."""
 
-    def __init__(self):
-        self.fit_function_type = "richards"
+    def __init__(self, fit_function_type = "richards"):
+        self.fit_function_type = fit_function_type
         self.fit_function_T_default_spacing = 0.1
         self.T = 0
         self.R = 0
+        self.richards_param = {'current':{}, 'previous':{}}
+        self.gauss_cdf_param = {}
 
         self.T_meas_error_pp = 0.0125 # in percent, estimated interpolation error
         self.T_meas_error_std = 0.02 # standard deviation of measurements at 4Kelvin
@@ -166,25 +169,44 @@ class RTfit():
         pass
 
     def read_RT_data(self, data):
+# # TODO: look if it is necessary to check whether data has something in it!
         if type(data) is dict:
-            self.T, self.R = (data['T'], data['R'])
+            self.T, self.R = (np.asarray(data['T']), np.asarray(data['R']))
         elif type(data) is numpy.ndarray:
             shape = np.shape(data)
             if shape[0] is 2:
-                self.T, self.R = (data[0,:], data[1,:])
+                self.T, self.R = (np.asarray(data[0,:]), np.asarray(data[1,:]))
             elif shape[1] is 2:
-                self.T, self.R = (data[:,0], data[:,1])
+                self.T, self.R = (np.asarray(data[:,0]), np.asarray(data[:,1]))
             else: raise ValueError('array has the shape ' + str(shape))
 
-
-    def define_fitting_parameters(arg):
+    def fit_data(arg):
+# TODO: define new current and previous
         pass
 
-    def __fit_data(arg):
-        pass
+    def __define_fitting_parameters(self, R_NC=None):
+        if R_NC is None
+            R_NC = np.max(self.R)
+        if self.fit_function_type is "richards":
+            a,c,q = (1,1,1)
+            previous_fit = self.richards_param['previous']
+            if previous_fit != {} and all(abs(previous_fit[list(previous_fit.keys()[0:3])]) < 15):
+                pass
+            else:
+                k = R_NC # affects near which asymptote maximum growth occurs (nu is always > 0)
+                nu = 1 # shift on x-axis
+                m = a + (k-a)/np.float_power((c+1),(1/nu))
+                # t_2 = T[bisect_left(R, np.max(R)/2)]
+                b = 1/(m-t_2) * ( np.log( np.float_power((2*(k-a)/k),nu)-c )+np.log(q) ) # growth rate 50
+                previous_fit = {'b': b, 'm': m, 'nu': nu, 'k':k}
+            self.richards_param['current'] = previous_fit.copy()
+        elif self.fit_function_type is 'gauss_cdf':
+            pass
 
-    def richards(arg):
-        pass
+
+
+    def richards(self, t,b,m,nu,k):
+        return a + (k-a)/np.float_power((c+q*np.exp(-b*(t-m))),1/nu)
 
     def gauss_cdf(arg):
         pass
@@ -196,5 +218,5 @@ class RTfit():
 T=DiffusivityMeasurement('./testing_meas/200212_200109A_diffusweep.mat')
 # b=T.R_vs_T(B=np.array([1,2]), err=True)
 # print(b)
-a=T.R_vs_B(3, err=True)
-print(a)
+#a=T.R_vs_B(3, err=True)
+#print(a)
