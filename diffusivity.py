@@ -157,8 +157,9 @@ class RTfit():
         self.fit_function_T_default_spacing = 0.1
         self.T = 0
         self.R = 0
-        self.richards_param = {'current':{}, 'previous':{}}
-        self.gauss_cdf_param = {}
+        self.fit_param = {'current':{}, 'previous':{}}
+        self.curve_fit_options = {}
+        self.fit_covariance_matrix = {}
 
         self.T_meas_error_pp = 0.0125 # in percent, estimated interpolation error
         self.T_meas_error_std = 0.02 # standard deviation of measurements at 4Kelvin
@@ -180,36 +181,51 @@ class RTfit():
                 self.T, self.R = (np.asarray(data[:,0]), np.asarray(data[:,1]))
             else: raise ValueError('array has the shape ' + str(shape))
 
-    def fit_data(arg):
-# TODO: define new current and previous
-        pass
-
-    def __define_fitting_parameters(self, R_NC=None):
-        if R_NC is None
-            R_NC = np.max(self.R)
+    def fit_data(self, R_NC=None):
         if self.fit_function_type is "richards":
-            a,c,q = (1,1,1)
-            previous_fit = self.richards_param['previous']
-            if previous_fit != {} and all(abs(previous_fit[list(previous_fit.keys()[0:3])]) < 15):
-                pass
-            else:
-                k = R_NC # affects near which asymptote maximum growth occurs (nu is always > 0)
-                nu = 1 # shift on x-axis
-                m = a + (k-a)/np.float_power((c+1),(1/nu))
-                # t_2 = T[bisect_left(R, np.max(R)/2)]
-                b = 1/(m-t_2) * ( np.log( np.float_power((2*(k-a)/k),nu)-c )+np.log(q) ) # growth rate 50
-                previous_fit = {'b': b, 'm': m, 'nu': nu, 'k':k}
-            self.richards_param['current'] = previous_fit.copy()
-        elif self.fit_function_type is 'gauss_cdf':
+            self.__define_fitting_parameters_richards()
+            fit_function = richards
+        elif self.fit_function_type is "gauss_cdf":
+            self.__define_fitting_parameters_gauss_cdf()
+            fit_function = gauss_cdf
+        else: raise ValueError('only "richards" and "gauss_cdf" as possible fitting functions')
+        popt, self.fit_covariance_matrix = curve_fit(fit_function, self.T, self.R, list(self.fit_param['current'].values()), self.curve_fit_options)
+        self.fit_param['previous'] = {key:value for key,value in zip(self.fit_param['current'].keys(), popt)}
+
+    def __define_fitting_parameters_richards(self, R_NC=np.max(self.R)):
+        a,c,q = (1,1,1)
+        previous_fit = self.fit_param['previous']
+        if previous_fit != {} and all(abs(previous_fit[list(previous_fit.keys()[1:3])]) < 15):
             pass
+        else:
+            k = R_NC # affects near which asymptote maximum growth occurs (nu is always > 0)
+            nu = 1 # shift on x-axis
+            m = a + (k-a)/np.float_power((c+1),(1/nu))
+            # TODO: take into account to change b from outside!
+            # t_2 = T[bisect_left(R, np.max(R)/2)]
+            b = 1/(m-t_2) * ( np.log( np.float_power((2*(k-a)/k),nu)-c )+np.log(q) ) # growth rate 50
+            previous_fit = {'b': b, 'm': m, 'nu': nu, 'k':k}
+        self.fit_param['current'] = previous_fit.copy()
+        self.curve_fit_options = {'maxfev':2500, 'bounds': ([-np.inf, -np.inf, -np.inf, 0.8*np.max(R)], [np.inf, np.inf, np.inf, 1.2*np.max(R)])}
 
-
+    def __define_fitting_parameters_gauss_cdf(self, R_NC=np.max(self.R)):
+        if bisect_left(self.R, R_NC/2) < len(self.R):
+            mean = T[bisect_left(self.R, R_NC/2)]
+            sigma = T[bisect_left(self.R, 0.9*R_NC)]-T[bisect_left(self.R, 0.1*R_NC)]
+        else:
+            R_rev = self.R[::-1]
+            mean = T[bisect_left(R_rev, R_NC/2)]
+            sigma = T[bisect_left(R_rev, 0.9*R_NC)]-T[bisect_left(R_rev, 0.1*R_NC)]
+        if sigma < 0.01:
+            sigma = 0.1
+        self.fit_param['current'] = {'scaling': R_NC, 'mean': mean, 'sigma': sigma}
+        self.curve_fit_options = {'maxfev':1600, 'bounds': (-inf, inf)}
 
     def richards(self, t,b,m,nu,k):
         return a + (k-a)/np.float_power((c+q*np.exp(-b*(t-m))),1/nu)
 
-    def gauss_cdf(arg):
-        pass
+    def gauss_cdf(self, x, a, mean, sigma):
+        return a*norm.cdf(x, mean, sigma)
 
     def Tc(arg):
         pass
