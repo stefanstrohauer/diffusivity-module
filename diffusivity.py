@@ -25,6 +25,9 @@ class DiffusivityMeasurement:
         self.RTfit = RTfit()
         #self.RTfit.read_RT_data(self.__RT_sweeps_per_B[4.0])
 
+    def get_RT(self):
+        return self.__RT_sweeps_per_B
+
     def __import_file_mat(self):
         """reads string with filename and returns .mat data file as list of lists"""
         return io.loadmat(self.filename, squeeze_me=True)[self.key_w_data]
@@ -183,17 +186,20 @@ class RTfit():
 
     def fit_data(self, R_NC=None):
         if self.fit_function_type is "richards":
-            self.__define_fitting_parameters_richards()
-            fit_function = richards
+            self.__define_fitting_parameters_richards(R_NC)
+            fit_function = self.richards
         elif self.fit_function_type is "gauss_cdf":
-            self.__define_fitting_parameters_gauss_cdf()
-            fit_function = gauss_cdf
+            self.__define_fitting_parameters_gauss_cdf(R_NC)
+            fit_function = self.gauss_cdf
         else: raise ValueError('only "richards" and "gauss_cdf" as possible fitting functions')
-        popt, self.fit_covariance_matrix = curve_fit(fit_function, self.T, self.R, list(self.fit_param['current'].values()), self.curve_fit_options)
-        self.fit_param['previous'] = {key:value for key,value in zip(self.fit_param['current'].keys(), popt)}
+        popt, self.fit_covariance_matrix = curve_fit(fit_function, self.T, self.R, list(self.fit_param['current'].values()), **self.curve_fit_options)
+        self.fit_param['current'] = {key:value for key,value in zip(self.fit_param['current'].keys(), popt)}
+        self.fit_param['previous'] = self.fit_param
 
-    def __define_fitting_parameters_richards(self, R_NC=np.max(self.R)):
-        a,c,q = (1,1,1)
+    def __define_fitting_parameters_richards(self, R_NC=None):
+        if R_NC is None:
+            R_NC = np.max(self.R)
+        a,c,q = (0,1,1)
         previous_fit = self.fit_param['previous']
         if previous_fit != {} and all(abs(previous_fit[list(previous_fit.keys()[1:3])]) < 15):
             pass
@@ -202,13 +208,15 @@ class RTfit():
             nu = 1 # shift on x-axis
             m = a + (k-a)/np.float_power((c+1),(1/nu))
             # TODO: take into account to change b from outside!
-            # t_2 = T[bisect_left(R, np.max(R)/2)]
+            t_2 = self.T[bisect_left(self.R, R_NC/2)]
             b = 1/(m-t_2) * ( np.log( np.float_power((2*(k-a)/k),nu)-c )+np.log(q) ) # growth rate 50
             previous_fit = {'b': b, 'm': m, 'nu': nu, 'k':k}
         self.fit_param['current'] = previous_fit.copy()
-        self.curve_fit_options = {'maxfev':2500, 'bounds': ([-np.inf, -np.inf, -np.inf, 0.8*np.max(R)], [np.inf, np.inf, np.inf, 1.2*np.max(R)])}
+        self.curve_fit_options = {'maxfev':2500, 'bounds': ([-np.inf, -np.inf, -np.inf, 0.8*R_NC], [np.inf, np.inf, np.inf, 1.2*R_NC])}
 
-    def __define_fitting_parameters_gauss_cdf(self, R_NC=np.max(self.R)):
+    def __define_fitting_parameters_gauss_cdf(self, R_NC=None):
+        if R_NC is None:
+            R_NC = np.max(self.R)
         if bisect_left(self.R, R_NC/2) < len(self.R):
             mean = T[bisect_left(self.R, R_NC/2)]
             sigma = T[bisect_left(self.R, 0.9*R_NC)]-T[bisect_left(self.R, 0.1*R_NC)]
@@ -221,7 +229,7 @@ class RTfit():
         self.fit_param['current'] = {'scaling': R_NC, 'mean': mean, 'sigma': sigma}
         self.curve_fit_options = {'maxfev':1600, 'bounds': (-inf, inf)}
 
-    def richards(self, t,b,m,nu,k):
+    def richards(self, t,b,m,nu,k, a=0, c=1, q=1):
         return a + (k-a)/np.float_power((c+q*np.exp(-b*(t-m))),1/nu)
 
     def gauss_cdf(self, x, a, mean, sigma):
@@ -231,7 +239,19 @@ class RTfit():
         pass
 
 
-T=DiffusivityMeasurement('./testing_meas/200212_200109A_diffusweep.mat')
+T2=DiffusivityMeasurement('./testing_meas/200212_200109A_diffusweep.mat')
+R2 = RTfit()
+R2.read_RT_data(T2.get_RT()[4.0])
+R2.fit_data()
+print('param: ', R2.fit_param)
+print('options: ', R2.curve_fit_options)
+print('cov: ', R2.fit_covariance_matrix)
+R2.read_RT_data(T2.get_RT()[3.0])
+R2.fit_data()
+print('param: ', R2.fit_param)
+print('options: ', R2.curve_fit_options)
+print('cov: ', R2.fit_covariance_matrix)
+#print(R.T, R.R)
 # b=T.R_vs_T(B=np.array([1,2]), err=True)
 # print(b)
 #a=T.R_vs_B(3, err=True)
