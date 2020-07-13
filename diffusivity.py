@@ -157,6 +157,7 @@ class RTfit():
 
     def __init__(self, fit_function_type = "richards"):
         self.fit_function_type = fit_function_type
+        self.fit_function = self.richards
         self.fit_function_T_default_spacing = 0.1
         self.T = 0
         self.R = 0
@@ -176,7 +177,7 @@ class RTfit():
 # # TODO: look if it is necessary to check whether data has something in it!
         if type(data) is dict:
             self.T, self.R = (np.asarray(data['T']), np.asarray(data['R']))
-        elif type(data) is numpy.ndarray:
+        elif type(data) is np.ndarray:
             shape = np.shape(data)
             if shape[0] is 2:
                 self.T, self.R = (np.asarray(data[0,:]), np.asarray(data[1,:]))
@@ -184,15 +185,16 @@ class RTfit():
                 self.T, self.R = (np.asarray(data[:,0]), np.asarray(data[:,1]))
             else: raise ValueError('array has the shape ' + str(shape))
 
+
     def fit_data(self, R_NC=None):
         if self.fit_function_type is "richards":
             self.__define_fitting_parameters_richards(R_NC)
-            fit_function = self.richards
+            self.fit_function = self.richards
         elif self.fit_function_type is "gauss_cdf":
             self.__define_fitting_parameters_gauss_cdf(R_NC)
-            fit_function = self.gauss_cdf
+            self.fit_function = self.gauss_cdf
         else: raise ValueError('only "richards" and "gauss_cdf" as possible fitting functions')
-        popt, self.fit_covariance_matrix = curve_fit(fit_function, self.T, self.R, list(self.fit_param['current'].values()), **self.curve_fit_options)
+        popt, self.fit_covariance_matrix = curve_fit(self.fit_function, self.T, self.R, list(self.fit_param['current'].values()), **self.curve_fit_options)
         self.fit_param['current'] = {key: value for key, value in zip(self.fit_param['current'].keys(), popt)}
 
     def __define_fitting_parameters_richards(self, R_NC=None):
@@ -210,7 +212,7 @@ class RTfit():
             # TODO: take into account to change b from outside!
             t_2 = self.T[bisect_left(self.R, R_NC/2)]
             b = 1/(m-t_2) * ( np.log( np.float_power((2*(k-a)/k),nu)-c )+np.log(q) ) # growth rate 50
-            previous_fit = {'b': b, 'm': m, 'nu': nu, 'k':k}
+            previous_fit = {'b': b, 'm': m, 'nu': nu, 'k': k}
         self.fit_param['current'] = previous_fit.copy()
         self.curve_fit_options = {'maxfev': 2500, 'bounds': ([-np.inf, -np.inf, -np.inf, 0.8*R_NC], [np.inf, np.inf, np.inf, 1.2*R_NC])}
 
@@ -232,11 +234,16 @@ class RTfit():
     def richards(self, t,b,m,nu,k, a=0, c=1, q=1):
         return a + (k-a)/np.float_power((c+q*np.exp(-b*(t-m))),1/nu)
 
-    def gauss_cdf(self, x, a, mean, sigma):
-        return a*norm.cdf(x, mean, sigma)
+    def gauss_cdf(self, x, scaling, mean, sigma):
+        return scaling*norm.cdf(x, mean, sigma)
 
-    def return_fit_points(self):
-        x =
+    def return_RTfit(self, eval_array = None):
+        if eval_array is None:
+            eval_array = self.T
+        x_low_lim = np.min(eval_array)
+        x_upp_lim = np.max(eval_array)
+        x_array = np.arange(x_low_lim, x_upp_lim, self.fit_function_T_default_spacing)
+        return (x_array, self.fit_function(x_array, **self.fit_param['current']))
 
     def Tc(arg):
         pass
@@ -254,6 +261,8 @@ R2.fit_data()
 print('param: ', R2.fit_param)
 print('options: ', R2.curve_fit_options)
 print('cov: ', R2.fit_covariance_matrix)
+x,y = R2.return_RTfit()
+print(x,y)
 #print(R.T, R.R)
 # b=T.R_vs_T(B=np.array([1,2]), err=True)
 # print(b)
