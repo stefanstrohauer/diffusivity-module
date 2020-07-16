@@ -155,6 +155,8 @@ class DiffusivityMeasurement:
                     T_max = np.max(value['T'])
             print(T_min, T_max)
             T_array = np.arange(T_min, T_max, self.RTfit.fit_function_T_default_spacing)
+        elif isinstance(T, (int, float)):
+            return T
         
 
 
