@@ -11,6 +11,7 @@ class DiffusivityMeasurement:
         self.B_sweeps = []
         self.R_sweeps = []
         self.__RT_sweeps_per_B = {}
+        self.parameters_RTfit = {}
 
         self.diffusivity = 0
         self.diffusivity_err = 0
@@ -73,6 +74,8 @@ class DiffusivityMeasurement:
         return T_array
 
     def R_vs_T(self, B=None, err=False):
+        # TODO: rename __array_w_err, __array_dict_w_err, error_std
+        # TODO: abbreviation of percent: pc
         if B is None:
             B = self.default_B_array
         B = self.__round_to_base(B, base=self.B_bin_size)
@@ -82,13 +85,13 @@ class DiffusivityMeasurement:
             T_err = self.__array_w_err(B, 'T', self.RTfit.T_meas_error_pp, self.RTfit.T_meas_error_std)
             R_err = self.__array_w_err(B, 'R', self.RTfit.R_meas_error_pp)
             return (self.__array_w_err(B, 'T'), self.__array_w_err(B, 'R'), T_err, R_err)
-        elif not(err):
+        elif isinstance(B, (np.ndarray, list)) and not(err):
             return (self.__array_dict_w_err(B, 'T'), self.__array_dict_w_err(B, 'R'))
-        elif err:
+        elif isinstance(B, (np.ndarray, list)) and err:
             T_dict_err = self.__array_dict_w_err(B, 'T', self.RTfit.T_meas_error_pp, self.RTfit.T_meas_error_std)
             R_dict_err = self.__array_dict_w_err(B, 'R', self.RTfit.R_meas_error_pp)
             return (self.__array_dict_w_err(B, 'T'), self.__array_dict_w_err(B, 'R'), T_dict_err, R_dict_err)
-        else: raise TypeError('"err" function parameter must be boolean type')
+        else: raise TypeError('some input parameter has not a valid type. check input parameters')
 
     def __array_w_err(self, B, selector, error_pp=1, error_std=0):
         return self.__RT_sweeps_per_B[B][selector] * error_pp + error_std
@@ -97,15 +100,17 @@ class DiffusivityMeasurement:
         return {key:value[selector] * error_pp + error_std for key, value in self.__RT_sweeps_per_B.items() if key in B}
 
     def get_sheet_resistance(self, upp_lim=450):
-        ## TODO: check for correctness of formulas!!
+        ## TODO: check for correctness of formulas!! and regardgin compatibility to new files -> __flatten_list
+        # TODO: while bigger 450 go through sweeps until you find one below
         max_R_NC = np.max(self.__flatten_list(self.R_sweeps))
-        if max_R_NC < 450:
+        if max_R_NC < upp_lim:
             sheet_resistance = self.sheet_resistance_geom_factor * max_R_NC
         else:
             sheet_resistance = self.sheet_resistance_geom_factor * np.max(self.__RT_sweeps_per_B[0.0]['R'])
         return sheet_resistance
 
     def R_vs_B(self, B_sweep_index, err=False):
+        # TODO: abbreviation of percent: pc
         if err:
             B_err = self.B_sweeps[B_sweep_index] * self.Bc2vsTfit.B_field_meas_error_pp + self.Bc2vsTfit.B_field_meas_error_round
             R_err = self.R_sweeps[B_sweep_index] * self.RTfit.R_meas_error_pp
@@ -124,11 +129,33 @@ class DiffusivityMeasurement:
     def calc_diffusivity(fit_low_lim=None, fit_upp_lim=None):
         pass
 
-    def fit_function_parameters(arg):
+    def fit_function_parameters(self, B=None):
+        # TODO: if isinstance(B, (int, float)): B = [B]
+        if B is None:
+            B = self.default_B_array
+        if isinstance(B, (int, float)):
+            self.RTfit.read_RT_data(self.__RT_sweeps_per_B[B])
+            self.parameters_RTfit = self.RTfit.fit_data()
+        elif isinstance(B, (np.ndarray, list)):
+            for k in B:
+                self.RTfit.read_RT_data(self.__RT_sweeps_per_B[k])
+                self.parameters_RTfit[k] = self.RTfit.fit_data()
+        else: raise TypeError('input parameters must have correct type. check input parameters')
+        return self.parameters_RTfit
+
+    def fit_function(self, T=None, B=None):
         pass
 
-    def fit_function(arg):
-        pass
+    def set_temperature_array(self,T):
+        if T is None:
+            T_min = np.inf; T_max = 0
+            for value in self.__RT_sweeps_per_B.values():
+                if np.min(value['T'])<T_min or np.max(value['T'])>T_max:
+                    T_min = np.min(value['T'])
+                    T_max = np.max(value['T'])
+            print(T_min, T_max)
+            T_array = np.arange(T_min, T_max, self.RTfit.fit_function_T_default_spacing)
+        
 
 
     class Bc2vsTfit():
@@ -184,6 +211,8 @@ class RTfit():
             elif shape[1] is 2:
                 self.T, self.R = (np.asarray(data[:,0]), np.asarray(data[:,1]))
             else: raise ValueError('array has the shape ' + str(shape))
+        elif type(data) is tuple:
+            self.T, self.R = data
 
 
     def fit_data(self, R_NC=None):
@@ -196,8 +225,10 @@ class RTfit():
         else: raise ValueError('only "richards" and "gauss_cdf" as possible fitting functions')
         popt, self.fit_covariance_matrix = curve_fit(self.fit_function, self.T, self.R, list(self.fit_param['current'].values()), **self.curve_fit_options)
         self.fit_param['current'] = {key: value for key, value in zip(self.fit_param['current'].keys(), popt)}
+        return self.fit_param['current']
 
     def __define_fitting_parameters_richards(self, R_NC=None):
+# TODO: previous_fit to previous_fit_param, rewrite function
         if R_NC is None:
             R_NC = np.max(self.R)
         a,c,q = (0,1,1)
@@ -237,34 +268,34 @@ class RTfit():
     def gauss_cdf(self, x, scaling, mean, sigma):
         return scaling*norm.cdf(x, mean, sigma)
 
-    def return_RTfit(self, eval_array = None):
+    def return_RTfit(self, eval_array = None, return_eval_array = False):
         if eval_array is None:
-            eval_array = self.T
-        x_low_lim = np.min(eval_array)
-        x_upp_lim = np.max(eval_array)
-        x_array = np.arange(x_low_lim, x_upp_lim, self.fit_function_T_default_spacing)
-        return (x_array, self.fit_function(x_array, **self.fit_param['current']))
+            x_low_lim = np.min(self.T)
+            x_upp_lim = np.max(self.T)
+            eval_array = np.arange(x_low_lim, x_upp_lim, self.fit_function_T_default_spacing)
+        if return_eval_array:
+            return (eval_array, self.fit_function(eval_array, **self.fit_param['current']))
+        elif not return_eval_array:
+            return self.fit_function(eval_array, **self.fit_param['current'])
 
     def Tc(arg):
         pass
 
 
 T2=DiffusivityMeasurement('./testing_meas/200212_200109A_diffusweep.mat')
-R2 = RTfit('gauss_cdf')
-R2.read_RT_data(T2.get_RT()[0.0])
+T2.RTfit.fit_function_type = 'gauss_cdf'
+T2.fit_function_parameters(B=3)
+T2.fit_function_parameters(B=0.1)
+T2.fit_function_parameters(B=2)
+T2.fit_function_parameters(B=4)
+R2 = RTfit()
+R2.read_RT_data(T2.R_vs_T(B=0.1))
 R2.fit_data()
-print('param: ', R2.fit_param)
-print('options: ', R2.curve_fit_options)
-print('cov: ', R2.fit_covariance_matrix)
-R2.read_RT_data(T2.get_RT()[0.1])
-R2.fit_data()
-print('param: ', R2.fit_param)
-print('options: ', R2.curve_fit_options)
-print('cov: ', R2.fit_covariance_matrix)
-x,y = R2.return_RTfit()
-print(x,y)
+R2.return_RTfit(eval_array=10)
+
+
 #print(R.T, R.R)
-# b=T.R_vs_T(B=np.array([1,2]), err=True)
-# print(b)
+# T1,R1,Terr1,Rerr1=T2.R_vs_T(B=np.array([1,2]), err=True) #
+# print(T1[1.0])
 #a=T.R_vs_B(3, err=True)
 #print(a)
