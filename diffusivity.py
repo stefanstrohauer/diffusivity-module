@@ -12,6 +12,7 @@ class DiffusivityMeasurement:
         self.R_sweeps = []
         self.__RT_sweeps_per_B = {}
         self.parameters_RTfit = {}
+        self.fitted_RTvalues = {}
 
         self.diffusivity = 0
         self.diffusivity_err = 0
@@ -144,16 +145,22 @@ class DiffusivityMeasurement:
 
     def fit_function(self, T=None, B=None):
         B = self.Tools.select_property(B, self.default_B_array, np.array(list(self.__RT_sweeps_per_B.keys())))
+        print(B)
         if not set(B).issubset(set(list(self.parameters_RTfit.values()))):
             self.fit_function_parameters(B)
         if isinstance(B, (int, float)):
             return self.RTfit.return_RTfit(*self.set_temperature_array(T), self.parameters_RTfit[B])
+        elif isinstance(T, (dict)) and isinstance(B, (np.ndarray, list)):
+            if not set(list(T.keys())).issubset(B):
+                raise TypeError("B values are not matching. Please revise B values of temperature dictionary")
+            for t, k in zip(T.values(), B):
+                self.fitted_RTvalues[k] = self.RTfit.return_RTfit(*self.set_temperature_array(t), self.parameters_RTfit[k])
+            return self.fitted_RTvalues
         elif isinstance(B, (np.ndarray, list)):
             for k in B:
-                self.RTfit.return_RTfit(*self.set_temperature_array(T), self.parameters_RTfit[k])
-
+                self.fitted_RTvalues[k] = self.RTfit.return_RTfit(*self.set_temperature_array(T), self.parameters_RTfit[k])
+            return self.fitted_RTvalues
         else: raise TypeError('input parameters must have correct type. check input parameters')
-
 
     def set_temperature_array(self,T):
         request_eval_array = False
@@ -162,19 +169,22 @@ class DiffusivityMeasurement:
             for value in self.__RT_sweeps_per_B.values():
                 if np.min(value['T']) < T_min:
                     T_min = np.min(value['T'])
-                if  np.max(value['T']) > T_max:
+                if np.max(value['T']) > T_max:
                     T_max = np.max(value['T'])
-                print(T_min, T_max)
             T_array = np.arange(T_min, T_max, self.RTfit.fit_function_T_default_spacing)
             request_eval_array = True
         elif isinstance(T,(list, np.ndarray)):
             T_array = T
         elif isinstance(T, (int, float)):
-            return T
+            return (T, request_eval_array)
         else: raise TypeError('input parameters must have correct type. check input parameters')
         return (T_array, request_eval_array)
 
-
+    def unpack_tuple_dictionary(self, dict_a):
+        return_dict = {}
+        for key, value in dict_a.items():
+            return_dict[key] = {'T': value[0], 'R': value[1]}
+        return return_dict
 
 
     class Bc2vsTfit():
@@ -305,19 +315,21 @@ class Utilities():
         pass
 
     def select_property(self, val, *args):
-        if val == None:
+        if val is None:
             return args[0]
-        elif val == 'all':
+        elif val is 'all':
             return args[1]
         else: return val
 
 T2=DiffusivityMeasurement('./testing_meas/200212_200109A_diffusweep.mat')
-T2.RTfit.fit_function_type = 'gauss_cdf'
+T2.RTfit.fit_function_type = 'richards'
 # print(T2.fit_function_parameters())
 # print(T2.fit_function_parameters(B=0.1))
 # print(T2.fit_function_parameters(B=2))
-print(T2.fit_function_parameters(B='all').values())
-
+#T2.fit_function_parameters(B='all').values()
+t,r = T2.R_vs_T()
+print(T2.fit_function())
+#print(T2.unpack_tuple_dictionary(T2.fit_function()))
 # R2 = RTfit()
 # R2.read_RT_data(T2.R_vs_T(B=0.1))
 # R2.fit_data()
