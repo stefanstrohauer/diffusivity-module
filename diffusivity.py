@@ -213,6 +213,8 @@ class DiffusivityMeasurement:
 
 
 
+
+
 class RTfit():
     """docstring for RTfit."""
 
@@ -311,8 +313,26 @@ class RTfit():
         elif not return_eval_array:
             return self.fit_function(eval_array, **fit_param)
 
-    def Tc(arg):
-        pass
+    def Tc(self, fit_param = None):
+        fit_param = self.Tools.select_property(fit_param, self.fit_param['output'])
+        if self.fit_function_type is 'richards':
+            return self.__get_Tc_richards(fit_param)
+        elif self.fit_function_type is 'gauss_cdf':
+            return self.__get_Tc_gauss_cdf()
+        else: raise ValueError('only "richards" and "gauss_cdf" as possible fitting functions')
+
+    def __get_Tc_gauss_cdf(self, param):
+        if 'mean' in param.keys():
+            return param['mean']
+        else: raise ValueError('no gaussian parameters found')
+
+    def __get_Tc_richards(self, param):
+        if {'b', 'm', 'nu', 'k'}.issubset(list(param.keys())):
+            a,c,q = (1,1,1)
+            b, m, nu, k = param.values()
+            return m - 1/b*( np.log(np.float_power(2*(k-a)/k,nu)-c) + np.log(q) )
+        else: raise ValueError('no richards parameters found')
+
 
 class Utilities():
 
