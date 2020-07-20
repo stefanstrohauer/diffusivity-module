@@ -145,11 +145,11 @@ class DiffusivityMeasurement:
 
     def fit_function(self, T=None, B=None):
         B = self.Tools.select_property(B, self.default_B_array, np.array(list(self.__RT_sweeps_per_B.keys())))
-        print(B)
+        if isinstance(B, (int, float)):
+            self.fit_function_parameters(B)
+            return self.RTfit.return_RTfit(*self.set_temperature_array(T), self.parameters_RTfit[B])
         if not set(B).issubset(set(list(self.parameters_RTfit.values()))):
             self.fit_function_parameters(B)
-        if isinstance(B, (int, float)):
-            return self.RTfit.return_RTfit(*self.set_temperature_array(T), self.parameters_RTfit[B])
         elif isinstance(T, (dict)) and isinstance(B, (np.ndarray, list)):
             if not set(list(T.keys())).issubset(B):
                 raise TypeError("B values are not matching. Please revise B values of temperature dictionary")
@@ -203,9 +203,14 @@ class DiffusivityMeasurement:
 
             self.B_field_meas_error_pp = 0.02 # variation of 1% in voltage monitor results in variation of 1% in Bfield
             self.B_field_meas_error_round = 0.001 # tbreviewed, in Tesla, measurement error + rounding error
+            self.linear_fit_T_default_spacing = 0.05
+
+
 
         def linear_fit(arg):
-            pass
+            def linear(self, x, a, b):
+                return a*x + b
+
 
 
 class RTfit():
@@ -327,8 +332,8 @@ T2.RTfit.fit_function_type = 'richards'
 # print(T2.fit_function_parameters(B=0.1))
 # print(T2.fit_function_parameters(B=2))
 #T2.fit_function_parameters(B='all').values()
-t,r = T2.R_vs_T()
-print(T2.fit_function())
+t,r = T2.R_vs_T(B=0.1)
+print(T2.fit_function(t,B=0.1))
 #print(T2.unpack_tuple_dictionary(T2.fit_function()))
 # R2 = RTfit()
 # R2.read_RT_data(T2.R_vs_T(B=0.1))
