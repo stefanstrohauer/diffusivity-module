@@ -25,7 +25,6 @@ class DiffusivityMeasurement:
         self.sheet_resistance = self.get_sheet_resistance()
         self.Bc2vsTfit = self.Bc2vsTfit()
         self.RTfit = RTfit(fit_function)
-        self.Tools = Utilities()
         #self.RTfit.read_RT_data(self.__RT_sweeps_per_B[4.0])
 
     def get_RT(self):
@@ -78,7 +77,7 @@ class DiffusivityMeasurement:
     def R_vs_T(self, B=None, err=False):
         # TODO: rename __array_w_err, __array_dict_w_err, error_std
         # TODO: abbreviation of percent: pc
-        B = self.Tools.select_property(B, self.default_B_array, np.array(list(self.__RT_sweeps_per_B.keys())))
+        B = Tools.select_property(B, self.default_B_array, np.array(list(self.__RT_sweeps_per_B.keys())))
         B = self.__round_to_base(B, base=self.B_bin_size)
         if isinstance(B, (int, float)) and not(err):
             return (self.__array_w_err(B, 'T'), self.__array_w_err(B, 'R'))
@@ -127,11 +126,11 @@ class DiffusivityMeasurement:
                     self.Bc2vsT.Bc2vsT['B_err'])
         else: raise TypeError('"err" function parameter must be boolean type')
 
-    def calc_diffusivity(fit_low_lim=None, fit_upp_lim=None):
+    def calc_diffusivity(self, fit_low_lim=None, fit_upp_lim=None):
         pass
 
     def fit_function_parameters(self, B=None):
-        B = self.Tools.select_property(B, self.default_B_array, np.array(list(self.__RT_sweeps_per_B.keys())))
+        B = Tools.select_property(B, self.default_B_array, np.array(list(self.__RT_sweeps_per_B.keys())))
         if isinstance(B, (int, float)):
             self.RTfit.read_RT_data(self.__RT_sweeps_per_B[B])
             self.parameters_RTfit[B] = self.RTfit.fit_data()
@@ -144,7 +143,7 @@ class DiffusivityMeasurement:
         else: raise TypeError('input parameters must have correct type. check input parameters')
 
     def fit_function(self, T=None, B=None):
-        B = self.Tools.select_property(B, self.default_B_array, np.array(list(self.__RT_sweeps_per_B.keys())))
+        B = Tools.select_property(B, self.default_B_array, np.array(list(self.__RT_sweeps_per_B.keys())))
         if isinstance(B, (int, float)):
             self.fit_function_parameters(B)
             return self.RTfit.return_RTfit(*self.set_temperature_array(T), self.parameters_RTfit[B])
@@ -200,19 +199,40 @@ class DiffusivityMeasurement:
             self.err_dBc2dT = 0
             self.r_squared = 0
             self.Bc2vsT = {}
+            self.Tc = 0
 
             self.B_field_meas_error_pp = 0.02 # variation of 1% in voltage monitor results in variation of 1% in Bfield
             self.B_field_meas_error_round = 0.001 # tbreviewed, in Tesla, measurement error + rounding error
             self.linear_fit_T_default_spacing = 0.05
 
+        def read_T_Bc2(self, data):
+            self.Bc2vsT['T'], self.Bc2vsT['Bc2'] = Tools.read_data_to_properties(data)
 
+        def linear_fit(self, T=None):
+            T_min_def = np.min(self.Bc2vsT['T'])
+            T_max_def = np.max(self.Bc2vsT['T'])
+            T = Tools.select_property(T, np.arange(T_min_def, T_max_def, self.linear_fit_T_default_spacing))
+            if T is None:
+                return (T, self.dBc2dT*T + self.B_0)
+            elif isinstance(T, (list, np.ndarray)):
+                return self.dBc2dT*T + self.B_0
+            else:
+                raise TypeError('wrong type of input parameter T. Please check input parameters')
 
-        def linear_fit(arg):
-            def linear(self, x, a, b):
-                return a*x + b
+        def calc_Bc2_T_fit(self, fit_low_lim, fit_up_lim):
+            T_min, T_max = (bisect_left(self.Bc2vsT['T'], fit_low_lim), bisect_left(self.Bc2vsT['T'], fit_up_lim))
+            T_fit_array = self.Bc2vsT['T'][T_min:T_max]
+            Bc2_fit_array = self.Bc2vsT['Bc2'][T_min, T_max]
+            self.__dBc2dT, self.__B_0, r_value, _, self.__err_dBc2dT = \
+                linregress(T_fit_array, Bc2_fit_array)
+            self.__r_squared = r_value**2
+            self.__D = -4*Boltzmann/(pi*elementary_charge*self.__dBc2dT)*1e4
+            self.__err_D = abs(4*Boltzmann/(pi*elementary_charge*(self.__dBc2dT**2))*self.__err_dBc2dTstd)
+            self.__Tc = -self.__B_0/self.__dBc2dT
+            return self.__get_fit_properties()
 
-
-
+        def __get_fit_properties(self):
+            return (self.D, self.dBc2dT, self.B_0, self.err_D, self.err_dBc2dT, self.r_squared)
 
 
 class RTfit():
@@ -231,25 +251,9 @@ class RTfit():
         self.T_meas_error_pp = 0.0125 # in percent, estimated interpolation error
         self.T_meas_error_std = 0.02 # standard deviation of measurements at 4Kelvin
         self.R_meas_error_pp = 0.017 # relative resistance error from resistance measurement
-        self.Tools = Utilities()
-
-
-    def import_data(self, arg):
-        pass
 
     def read_RT_data(self, data):
-# # TODO: look if it is necessary to check whether data has something in it!
-        if type(data) is dict:
-            self.T, self.R = (np.asarray(data['T']), np.asarray(data['R']))
-        elif type(data) is np.ndarray:
-            shape = np.shape(data)
-            if shape[0] is 2:
-                self.T, self.R = (np.asarray(data[0,:]), np.asarray(data[1,:]))
-            elif shape[1] is 2:
-                self.T, self.R = (np.asarray(data[:,0]), np.asarray(data[:,1]))
-            else: raise ValueError('array has the shape ' + str(shape))
-        elif type(data) is tuple:
-            self.T, self.R = data
+        self.T, self.R = Tools.read_data_to_properties(data)
 
     def fit_data(self, R_NC=None):
         if self.fit_function_type is "richards":
@@ -267,12 +271,12 @@ class RTfit():
         '''Input:
         Output:
         Description: '''
-        R_NC = self.Tools.select_property(R_NC, np.max(self.R))
+        R_NC = Tools.select_property(R_NC, np.max(self.R))
         a,c,q = (0,1,1)
         if self.fit_param['output'] == {}: #and all(abs(start_values_fit_param[list(start_values_fit_param.keys())[1:3]]) < 15)
-            k = R_NC #
-            nu = 1 # affects near which asymptote maximum growth occurs (nu is always > 0)
-            m = a + (k-a)/np.float_power((c+1),(1/nu)) # shift on x-axis
+            k = R_NC  #
+            nu = 1  # affects near which asymptote maximum growth occurs (nu is always > 0)
+            m = a + (k-a)/np.float_power((c+1),(1/nu))  # shift on x-axis
             # TODO: take into account to change b from outside!
             t_2 = self.T[bisect_left(self.R, R_NC/2)]
             b = 1/(m-t_2) * ( np.log( np.float_power((2*(k-a)/k),nu)-c )+np.log(q) ) # growth rate 50
@@ -282,7 +286,7 @@ class RTfit():
         self.curve_fit_options = {'maxfev': 2500, 'bounds': ([-np.inf, -np.inf, -np.inf, 0.8*R_NC], [np.inf, np.inf, np.inf, 1.2*R_NC])}
 
     def __define_fitting_parameters_gauss_cdf(self, R_NC=None):
-        R_NC = self.Tools.select_property(R_NC, np.max(self.R))
+        R_NC = Tools.select_property(R_NC, np.max(self.R))
         if bisect_left(self.R, R_NC/2) < len(self.R):
             mean = self.T[bisect_left(self.R, R_NC/2)]
             sigma = self.T[bisect_left(self.R, 0.9*R_NC)]-self.T[bisect_left(self.R, 0.1*R_NC)]
@@ -302,7 +306,7 @@ class RTfit():
         return scaling*norm.cdf(x, mean, sigma)
 
     def return_RTfit(self, eval_array = None, return_eval_array = False, fit_param=None):
-        fit_param = self.Tools.select_property(fit_param, self.fit_param['output'])
+        fit_param = Tools.select_property(fit_param, self.fit_param['output'])
         if eval_array is None:
             x_low_lim = np.min(self.T)
             x_upp_lim = np.max(self.T)
@@ -313,7 +317,7 @@ class RTfit():
             return self.fit_function(eval_array, **fit_param)
 
     def Tc(self, fit_param = None):
-        fit_param = self.Tools.select_property(fit_param, self.fit_param['output'])
+        fit_param = Tools.select_property(fit_param, self.fit_param['output'])
         if self.fit_function_type is 'richards':
             Tc = self.__get_Tc_richards(fit_param)
             return (Tc, *self.__Tc_error(Tc))
@@ -343,18 +347,30 @@ class RTfit():
         return (T_err_low, T_err_up)
 
 
+class Tools():
 
-class Utilities():
-
-    def __init__(self):
-        pass
-
-    def select_property(self, val, *args):
+    @staticmethod
+    def select_property(val, *args):
         if val is None:
             return args[0]
         elif val is 'all':
             return args[1]
         else: return val
+
+    @staticmethod
+    def read_data_to_properties(data):
+    # TODO: look if it is necessary to check whether data has something in it!
+        if type(data) is dict:
+            return (np.asarray(data['T']), np.asarray(data['R']))
+        elif type(data) is np.ndarray:
+            shape = np.shape(data)
+            if shape[0] is 2:
+                return (np.asarray(data[0,:]), np.asarray(data[1,:]))
+            elif shape[1] is 2:
+                return (np.asarray(data[:,0]), np.asarray(data[:,1]))
+            else: raise ValueError('array has the shape ' + str(shape))
+        elif type(data) is tuple:
+            return data
 
 T2=DiffusivityMeasurement('./testing_meas/200212_200109A_diffusweep.mat')
 T2.RTfit.fit_function_type = 'richards'
