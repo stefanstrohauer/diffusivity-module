@@ -23,8 +23,8 @@ class DiffusivityMeasurement:
         self._read_B_sweeps_to_properties()
         self.__rearrange_B_sweeps()
         self.sheet_resistance = self.get_sheet_resistance()
-        self.Bc2vsTfit = self.Bc2vsTfit()
         self.RTfit = RTfit(fit_function)
+        self.Bc2vsT_fit = None
         #self.RTfit.read_RT_data(self.__RT_sweeps_per_B[4.0])
 
     def get_RT(self):
@@ -62,7 +62,7 @@ class DiffusivityMeasurement:
 
     def __round_to_base(self, x, base):
       prec = str(base)[::-1].find('.')
-      return np.round(base * np.round(x/base),prec)
+      return np.round(base * np.round(x/base), prec)
 
     def __time_temperature_mapping(self): # TODO: what do we do with this function, maybe change the whole data structure a bit
         Temp_at_timestamp = [i[0:4] for i in self._raw_data]
@@ -118,16 +118,45 @@ class DiffusivityMeasurement:
         else: return (self.B_sweeps[B_sweep_index], self.R_sweeps[B_sweep_index])
 
     def Bc2_vs_T(self, err=False):
+        if self.Bc2vsT_fit is None:
+            raise ValueError('to read out data from the Bc2 vs. T relation, execute "calc_diffusivity"')
         if not err:
-            return (self.Bc2vsT.Bc2vsT['T'], self.Bc2vsT.Bc2vsT['Bc2'])
+            return (self.Bc2vsT_fit.Bc2vsT['T'], self.Bc2vsT_fit.Bc2vsT['Bc2'])
         elif err:
-            return (self.Bc2vsT.Bc2vsT['T'], self.Bc2vsT.Bc2vsT['Bc2'],
-                    self.Bc2vsT.Bc2vsT['T_low_err'], self.Bc2vsT.Bc2vsT['T_upp_err'],
-                    self.Bc2vsT.Bc2vsT['B_err'])
+            return (self.Bc2vsT_fit.Bc2vsT['T'], self.Bc2vsT.Bc2vsT['Bc2'],
+                    self.Bc2vsT_fit.Bc2vsT['T_low_err'], self.Bc2vsT_fit.Bc2vsT['T_upp_err'],
+                    self.Bc2vsT_fit.Bc2vsT['B_err'])
         else: raise TypeError('"err" function parameter must be boolean type')
 
     def calc_diffusivity(self, fit_low_lim=None, fit_upp_lim=None):
-        pass
+        # TODO: split calc diff and print diff (extra method for that)
+        B = np.array(list(self.__RT_sweeps_per_B.keys()))
+        self.Bc2vsT_fit = self.Bc2vsTfit((*self.get_Tc(B='all', err=True), B), fit_low_lim, fit_upp_lim)
+        return self.Bc2vsT_fit.calc_Bc2_T_fit()
+
+    def get_Tc(self, B=None, err=False):
+        B = Tools.select_property(B, self.default_B_array, np.array(list(self.__RT_sweeps_per_B.keys())))
+        B = self.__round_to_base(B, base=self.B_bin_size)
+        if isinstance(B, (int,float)) and B not in self.parameters_RTfit.keys():
+            raise KeyError('no fit parameters found for the asked B field. Please update parameters_RTfit property')
+        elif isinstance(B, (list, np.ndarray)) and not set(B).issubset(set(list(self.parameters_RTfit.keys()))):
+            raise KeyError('no fit parameters found for the asked B fields. Please update parameters_RTfit property')
+        elif not isinstance(B, (int, float, list,np.ndarray)):
+            raise KeyError('incorrect type of passed B-fields. Please revise given input parameters of function')
+        elif isinstance(B, (int,float)):
+            if err is False:
+                return self.RTfit.Tc(fit_param=self.parameters_RTfit[B])[0]
+            else:
+                return self.RTfit.Tc(fit_param=self.parameters_RTfit[B])
+        else:
+            Tc, Tc_err_low, Tc_err_up = (np.array([]), np.array([]), np.array([]))
+            for key in B:
+                Tc= np.append(Tc, self.RTfit.Tc(fit_param=self.parameters_RTfit[key])[0])
+                Tc_err_low = np.append(Tc_err_low, self.RTfit.Tc(fit_param=self.parameters_RTfit[key])[1])
+                Tc_err_up = np.append(Tc_err_up, self.RTfit.Tc(fit_param=self.parameters_RTfit[key])[2])
+            if err is False:
+                return Tc
+            else: return (Tc, Tc_err_low, Tc_err_up)
 
     def fit_function_parameters(self, B=None):
         B = Tools.select_property(B, self.default_B_array, np.array(list(self.__RT_sweeps_per_B.keys())))
@@ -147,7 +176,7 @@ class DiffusivityMeasurement:
         if isinstance(B, (int, float)):
             self.fit_function_parameters(B)
             return self.RTfit.return_RTfit(*self.set_temperature_array(T), self.parameters_RTfit[B])
-        if not set(B).issubset(set(list(self.parameters_RTfit.values()))):
+        if not set(B).issubset(set(list(self.parameters_RTfit.keys()))):
             self.fit_function_parameters(B)
         elif isinstance(T, (dict)) and isinstance(B, (np.ndarray, list)):
             if not set(list(T.keys())).issubset(B):
@@ -172,7 +201,7 @@ class DiffusivityMeasurement:
                     T_max = np.max(value['T'])
             T_array = np.arange(T_min, T_max, self.RTfit.fit_function_T_default_spacing)
             request_eval_array = True
-        elif isinstance(T,(list, np.ndarray)):
+        elif isinstance(T, (list, np.ndarray)):
             T_array = T
         elif isinstance(T, (int, float)):
             return (T, request_eval_array)
@@ -189,15 +218,15 @@ class DiffusivityMeasurement:
     class Bc2vsTfit():
         """docstring for Bc2vsTfit."""
 
-        def __init__(self):
+        def __init__(self, data, fit_low_lim, fit_upp_lim):
             self.low_lim = None
             self.upp_lim = None
-            self.D = 0
-            self.dBc2dT = 0
-            self.B_0 = 0
-            self.err_D = 0
-            self.err_dBc2dT = 0
-            self.r_squared = 0
+            self.__D = 0
+            self.__dBc2dT = 0
+            self.__B_0 = 0
+            self.__err_D = 0
+            self.__err_dBc2dT = 0
+            self.__r_squared = 0
             self.Bc2vsT = {}
             self.Tc = 0
 
@@ -205,8 +234,12 @@ class DiffusivityMeasurement:
             self.B_field_meas_error_round = 0.001 # tbreviewed, in Tesla, measurement error + rounding error
             self.linear_fit_T_default_spacing = 0.05
 
-        def read_T_Bc2(self, data):
-            self.Bc2vsT['T'], self.Bc2vsT['Bc2'] = Tools.read_data_to_properties(data)
+            self.set_properties(data)
+            self.low_lim = Tools.select_property(fit_low_lim, np.sort(self.Bc2vsT['T'])[1])
+            self.upp_lim = Tools.select_property(fit_upp_lim, np.sort(self.Bc2vsT['T'])[-2])
+
+        def set_properties(self, data):
+            self.Bc2vsT['T'], self.Bc2vsT['T_low_err'], self.Bc2vsT['T_upp_err'], self.Bc2vsT['Bc2'] = data
 
         def linear_fit(self, T=None):
             T_min_def = np.min(self.Bc2vsT['T'])
@@ -219,20 +252,38 @@ class DiffusivityMeasurement:
             else:
                 raise TypeError('wrong type of input parameter T. Please check input parameters')
 
-        def calc_Bc2_T_fit(self, fit_low_lim, fit_up_lim):
-            T_min, T_max = (bisect_left(self.Bc2vsT['T'], fit_low_lim), bisect_left(self.Bc2vsT['T'], fit_up_lim))
-            T_fit_array = self.Bc2vsT['T'][T_min:T_max]
-            Bc2_fit_array = self.Bc2vsT['Bc2'][T_min, T_max]
+        def calc_Bc2_T_fit(self, fit_low_lim=None, fit_up_lim=None):
+            T_fit_array, Bc2_fit_array = self.__select_T_Bc2(fit_low_lim, fit_up_lim)
+            # print(self.Bc2vsT['T'])
+            # print(T_fit_array)
+            # print('\n')
+            # print(self.Bc2vsT['Bc2'])
+            # print(Bc2_fit_array)
+            # print(len(self.Bc2vsT['T']), len(T_fit_array))
+            # print(len(self.Bc2vsT['Bc2']), len(Bc2_fit_array))
             self.__dBc2dT, self.__B_0, r_value, _, self.__err_dBc2dT = \
                 linregress(T_fit_array, Bc2_fit_array)
             self.__r_squared = r_value**2
             self.__D = -4*Boltzmann/(pi*elementary_charge*self.__dBc2dT)*1e4
-            self.__err_D = abs(4*Boltzmann/(pi*elementary_charge*(self.__dBc2dT**2))*self.__err_dBc2dTstd)
-            self.__Tc = -self.__B_0/self.__dBc2dT
+            self.__err_D = abs(4*Boltzmann/(pi*elementary_charge*(self.__dBc2dT**2))*self.__err_dBc2dT)
+            self.Tc = -self.__B_0/self.__dBc2dT
             return self.__get_fit_properties()
 
+        def __select_T_Bc2(self, fit_low_lim=None, fit_up_lim=None):
+            fit_low_lim = Tools.select_property(fit_low_lim, self.low_lim)
+            fit_up_lim = Tools.select_property(fit_up_lim, self.upp_lim)
+            T_Bc2 = np.array([self.Bc2vsT['T'], self.Bc2vsT['Bc2']]).transpose()
+            T_Bc2 = T_Bc2[T_Bc2[:,0].argsort()]
+            #TODO: check for a better condition where only one line is used
+            T_Bc2 = T_Bc2[T_Bc2[:,0] > fit_low_lim, :]
+            T_Bc2 = T_Bc2[T_Bc2[:,0] < fit_up_lim, :]
+            T_array, Bc2_array = (T_Bc2[:,0], T_Bc2[:,1])
+            return (T_array, Bc2_array)
+
+
+
         def __get_fit_properties(self):
-            return (self.D, self.dBc2dT, self.B_0, self.err_D, self.err_dBc2dT, self.r_squared)
+            return (self.__D, self.__dBc2dT, self.__B_0, self.__err_D, self.__err_dBc2dT, self.__r_squared)
 
 
 class RTfit():
@@ -360,6 +411,7 @@ class Tools():
     @staticmethod
     def read_data_to_properties(data):
     # TODO: look if it is necessary to check whether data has something in it!
+    # TODO: Check to make this function more useful and not only for RT fit class
         if type(data) is dict:
             return (np.asarray(data['T']), np.asarray(data['R']))
         elif type(data) is np.ndarray:
@@ -372,24 +424,4 @@ class Tools():
         elif type(data) is tuple:
             return data
 
-T2=DiffusivityMeasurement('./testing_meas/200212_200109A_diffusweep.mat')
-T2.RTfit.fit_function_type = 'richards'
-# print(T2.fit_function_parameters())
-# print(T2.fit_function_parameters(B=0.1))
-# print(T2.fit_function_parameters(B=2))
-#T2.fit_function_parameters(B='all').values()
-t,r = T2.R_vs_T(B=0.1)
-#print(T2.fit_function(t,B=0.1))
-#print(T2.unpack_tuple_dictionary(T2.fit_function()))
-R2 = RTfit('richards')
-R2.read_RT_data(T2.R_vs_T(B=0.1))
-R2.fit_data()
-print(R2.Tc())
-# R2.return_RTfit(eval_array=10)
 
-
-#print(R.T, R.R)
-# T1,R1,Terr1,Rerr1=T2.R_vs_T(B=np.array([1,2]), err=True) #
-# print(T1[1.0])
-#a=T.R_vs_B(3, err=True)
-#print(a)
