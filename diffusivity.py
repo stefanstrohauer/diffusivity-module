@@ -1,7 +1,7 @@
 from import_lib import *
 
 class DiffusivityMeasurement:
-    def __init__(self, filename): # to see why it is cleaner to create new object
+    def __init__(self, filename, fit_function='richards'): # to see why it is cleaner to create new object
                                   # https://stackoverflow.com/questions/29947810/reusing-instances-of-objects-vs-creating-new-ones-with-every-update
         self.filename = filename
         self.key_w_data = 'data'
@@ -24,7 +24,7 @@ class DiffusivityMeasurement:
         self.__rearrange_B_sweeps()
         self.sheet_resistance = self.get_sheet_resistance()
         self.Bc2vsTfit = self.Bc2vsTfit()
-        self.RTfit = RTfit()
+        self.RTfit = RTfit(fit_function)
         self.Tools = Utilities()
         #self.RTfit.read_RT_data(self.__RT_sweeps_per_B[4.0])
 
@@ -263,7 +263,6 @@ class RTfit():
         self.fit_param['output'] = {key: value for key, value in zip(self.fit_param['start_values'].keys(), popt)}
         return self.fit_param['output']
 
-
     def __define_fitting_parameters_richards(self, R_NC=None):
         '''Input:
         Output:
@@ -316,9 +315,11 @@ class RTfit():
     def Tc(self, fit_param = None):
         fit_param = self.Tools.select_property(fit_param, self.fit_param['output'])
         if self.fit_function_type is 'richards':
-            return self.__get_Tc_richards(fit_param)
+            Tc = self.__get_Tc_richards(fit_param)
+            return (Tc, *self.__Tc_error(Tc))
         elif self.fit_function_type is 'gauss_cdf':
-            return self.__get_Tc_gauss_cdf()
+            Tc = self.__get_Tc_gauss_cdf(fit_param)
+            return (Tc, *self.__Tc_error(Tc))
         else: raise ValueError('only "richards" and "gauss_cdf" as possible fitting functions')
 
     def __get_Tc_gauss_cdf(self, param):
@@ -331,7 +332,16 @@ class RTfit():
             a,c,q = (1,1,1)
             b, m, nu, k = param.values()
             return m - 1/b*( np.log(np.float_power(2*(k-a)/k,nu)-c) + np.log(q) )
-        else: raise ValueError('no richards parameters found')
+        else:
+            raise ValueError('no richards parameters found')
+
+    def __Tc_error(self, Tc):
+        T_data_from_below = self.T[bisect_left(self.T, Tc) - 1]
+        T_data_from_above = self.T[bisect_left(self.T, Tc)]
+        T_err_low = abs(Tc - T_data_from_below - self.T_meas_error_pp * T_data_from_below - self.T_meas_error_std)
+        T_err_up = abs(T_data_from_above + self.T_meas_error_pp * T_data_from_above + self.T_meas_error_std - Tc)
+        return (T_err_low, T_err_up)
+
 
 
 class Utilities():
@@ -353,11 +363,12 @@ T2.RTfit.fit_function_type = 'richards'
 # print(T2.fit_function_parameters(B=2))
 #T2.fit_function_parameters(B='all').values()
 t,r = T2.R_vs_T(B=0.1)
-print(T2.fit_function(t,B=0.1))
+#print(T2.fit_function(t,B=0.1))
 #print(T2.unpack_tuple_dictionary(T2.fit_function()))
-# R2 = RTfit()
-# R2.read_RT_data(T2.R_vs_T(B=0.1))
-# R2.fit_data()
+R2 = RTfit('richards')
+R2.read_RT_data(T2.R_vs_T(B=0.1))
+R2.fit_data()
+print(R2.Tc())
 # R2.return_RTfit(eval_array=10)
 
 
