@@ -12,6 +12,7 @@ from scipy.constants import elementary_charge, Boltzmann
 from math import pi
 from math import *
 import matplotlib as mpl
+from scipy.stats import linregress
 import matplotlib.pyplot as plt
 import matplotlib.patches as pat
 import matplotlib.cm as cm
