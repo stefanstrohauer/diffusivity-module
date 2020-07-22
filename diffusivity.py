@@ -79,59 +79,77 @@ class DiffusivityMeasurement:
       return np.round(base * np.round(x/base), prec)
 
     def __time_temperature_mapping(self): # TODO: what do we do with this function, maybe change the whole data structure a bit
+        '''Input: temperature data
+        Output: interpolated temperature data with same length as R and B-sweeps
+        Description: For measurements without Cernox. As temperature is measured between B-sweeps, the time array is used
+        to interpolate the temperature (temperature is assumed to rise almost linearly).'''
         Temp_at_timestamp = [i[0:4] for i in self._raw_data]
         T_array = []
         for i,j in zip(self.time_sweeps, Temp_at_timestamp):
-            t = [i[0], i[-1]]
+            t = [i[0], i[-1]]  # locations of the time and temperature data
             T = [j[2], j[3]]
             p = np.polyfit(t,T,1)
             T_array.append(np.polyval(p,i))
         return T_array
 
     def R_vs_T(self, B=None, err=False):
-        # TODO: rename __array_w_err, __array_dict_w_err, error_std
-        # TODO: abbreviation of percent: pc
+        '''Input: B fields for which RvsT should be returned, flag to decide if error is returned
+        Output: Tuple of varying size depending on err-flag including (T,R,T_err,R_err) of an RT-sweep (Resistance-Temperature-Sweep)
+        Description: Depending on the input B fields "B" and the err-flag, this method returns the associated RT-sweep with error'''
         B = Tools.select_property(B, self.default_B_array, np.array(list(self.__RT_sweeps_per_B.keys())))
         B = self.__round_to_decimal(np.array(B), base=self.B_bin_size)
         if isinstance(B, (int, float)) and not(err):
-            return (self.__array_w_err(B, 'T'), self.__array_w_err(B, 'R'))
+            return (self.__RT_array_builder(B, 'T'), self.__RT_array_builder(B, 'R'))
         elif isinstance(B, (int, float)) and err:
-            T_err = self.__array_w_err(B, 'T', self.RTfit.T_meas_error_pp, self.RTfit.T_meas_error_std)
-            R_err = self.__array_w_err(B, 'R', self.RTfit.R_meas_error_pp)
-            return (self.__array_w_err(B, 'T'), self.__array_w_err(B, 'R'), T_err, R_err)
+            T_err = self.__RT_array_builder(B, 'T', self.RTfit.T_meas_error_pc, self.RTfit.T_meas_error_std_dev)
+            R_err = self.__RT_array_builder(B, 'R', self.RTfit.R_meas_error_pc)
+            return (self.__RT_array_builder(B, 'T'), self.__RT_array_builder(B, 'R'), T_err, R_err)
         elif isinstance(B, (np.ndarray, list)) and not(err):
-            return (self.__array_dict_w_err(B, 'T'), self.__array_dict_w_err(B, 'R'))
+            return (self.__RT_dict_builder(B, 'T'), self.__RT_dict_builder(B, 'R'))
         elif isinstance(B, (np.ndarray, list)) and err:
-            T_dict_err = self.__array_dict_w_err(B, 'T', self.RTfit.T_meas_error_pp, self.RTfit.T_meas_error_std)
-            R_dict_err = self.__array_dict_w_err(B, 'R', self.RTfit.R_meas_error_pp)
-            return (self.__array_dict_w_err(B, 'T'), self.__array_dict_w_err(B, 'R'), T_dict_err, R_dict_err)
+            T_dict_err = self.__RT_dict_builder(B, 'T', self.RTfit.T_meas_error_pc, self.RTfit.T_meas_error_std_dev)
+            R_dict_err = self.__RT_dict_builder(B, 'R', self.RTfit.R_meas_error_pc)
+            return (self.__RT_dict_builder(B, 'T'), self.__RT_dict_builder(B, 'R'), T_dict_err, R_dict_err)
         else: raise TypeError('some input parameter has not a valid type. check input parameters')
 
-    def __array_w_err(self, B, selector, error_pp=1, error_std=0):
-        return self.__RT_sweeps_per_B[B][selector] * error_pp + error_std
+    def __RT_array_builder(self, B, selector, error_pc=1, error_std=0):  # Method to return either the R (T) array or the R_err (T_err) array
+        return self.__RT_sweeps_per_B[B][selector] * error_pc + error_std
 
-    def __array_dict_w_err(self, B, selector, error_pp=1, error_std=0):
-        return {key:value[selector] * error_pp + error_std for key, value in self.__RT_sweeps_per_B.items() if key in B}
+    def __RT_dict_builder(self, B, selector, error_pc=1, error_std=0):  # Method returning either R(R_err)/T(T_err) arrays in form of dicts (B as key)
+        return {key:value[selector] * error_pc + error_std for key, value in self.__RT_sweeps_per_B.items() if key in B}
 
     def get_sheet_resistance(self, upp_lim=450):
-        ## TODO: check for correctness of formulas!! and regardgin compatibility to new files -> __flatten_list
-        # TODO: while bigger 450 go through sweeps until you find one below
+        '''Input: upper limit for measured resistance
+        Output: sheet resistance
+        Description: Calculated sheet resistance out of the maximal measured resistance (usually close to 15K). If value is not sensible,
+        every sweep is searched for its maximum until one is found with R_meas_max < upp_lim'''
+        # TODO: check for correctness of formulas!! and regardgin compatibility to new files -> __flatten_list
         max_R_NC = np.max(self.__flatten_list(self.R_sweeps))
         if max_R_NC < upp_lim:
             sheet_resistance = self.sheet_resistance_geom_factor * max_R_NC
         else:
-            sheet_resistance = self.sheet_resistance_geom_factor * np.max(self.__RT_sweeps_per_B[0.0]['R'])
+            max_R_NC = 0
+            for value in self.__RT_sweeps_per_B.values():
+                curr_R = np.max(value['R'])
+                if curr_R > max_R_NC and curr_R <= upp_lim:
+                     max_R_NC = curr_R
+            sheet_resistance = self.sheet_resistance_geom_factor * max_R_NC
         return sheet_resistance
 
     def R_vs_B(self, B_sweep_index, err=False):
-        # TODO: abbreviation of percent: pc
+        '''Input: index of the searched B sweep in the data
+        Output: R-B-sweep as measured, optionally with error
+        Description: Returns R-B-sweeps'''
         if err:
-            B_err = self.B_sweeps[B_sweep_index] * self.Bc2vsT_fit.B_field_meas_error_pp + self.Bc2vsT_fit.B_field_meas_error_round
-            R_err = self.R_sweeps[B_sweep_index] * self.RTfit.R_meas_error_pp
+            B_err = self.B_sweeps[B_sweep_index] * self.Bc2vsT_fit.B_field_meas_error_pc + self.Bc2vsT_fit.B_field_meas_error_round
+            R_err = self.R_sweeps[B_sweep_index] * self.RTfit.R_meas_error_pc
             return (self.B_sweeps[B_sweep_index], self.R_sweeps[B_sweep_index], B_err, R_err)
         else: return (self.B_sweeps[B_sweep_index], self.R_sweeps[B_sweep_index])
 
     def Bc2_vs_T(self, err=False):
+        '''Input: error flag
+        Output: Bc2(T) as arrays (T,Bc2), (optional) with error
+        Description: returns Bc2(T). Data comes from the Bc2vsTfit class initialied in calc_diffusivity'''
         if self.Bc2vsT_fit is None:
             raise ValueError('to read out data from the Bc2 vs. T relation, execute "calc_diffusivity"')
         if not err:
@@ -143,17 +161,24 @@ class DiffusivityMeasurement:
         else: raise TypeError('"err" function parameter must be boolean type')
 
     def calc_diffusivity(self, fit_low_lim=None, fit_upp_lim=None):
-        # TODO: split calc diff and print diff (extra method for that)
+        '''Input: fit limits of the Bc2(T)
+        Output: Diffusivity and related values are set in the properties
+        Description: First all B fields (keys) are selected. Then the Bc2vsTfit class is initialized and the diffusivity and related
+        values calculated and the respecting properties set'''
         B = np.array(list(self.__RT_sweeps_per_B.keys()))
-        self.Bc2vsT_fit = self.Bc2vsTfit((*self.get_Tc(B='all', err=True), B), fit_low_lim, fit_upp_lim)
-        self.Bc2vsT_fit.calc_Bc2_T_fit()
-        self.diffusivity, _, _, self.diffusivity_err, _, _ = self.Bc2vsT_fit.get_fit_properties()
-        self.Tc_0T = self.Bc2vsT_fit.Tc
+        self.Bc2vsT_fit = self.Bc2vsTfit((*self.get_Tc(B='all', err=True), B), fit_low_lim, fit_upp_lim)  # initiaizing class
+        self.Bc2vsT_fit.calc_Bc2_T_fit()  # calculating diffusivity and values
+        self.diffusivity, _, _, self.diffusivity_err, _, _ = self.Bc2vsT_fit.get_fit_properties()  # setting properties
+        self.Tc_0T = self.Bc2vsT_fit.Tc  # handig over Tc (calculated in Bc2vsTfit)
 
-    def get_Dfit_properties(self):
+    def get_Dfit_properties(self):  # Returns the values calculated in self.Bc2vsT_fit.calc_Bc2_T_fit()
         return self.Bc2vsT_fit.get_fit_properties()
 
     def get_Tc(self, B=None, err=False):
+        '''Input: B fields, flag if error should be returned
+        Output: Transition temperature Tc of RT-sweep (with lower und upper error)
+        Description: Sets B array and checks if corresponding RT sweeps have been fitted. Depending on type of B, returns tuple or tuple of arrays
+        with Tc values'''
         B = Tools.select_property(B, self.default_B_array, np.array(list(self.__RT_sweeps_per_B.keys())))
         B = self.__round_to_decimal(np.array(B), base=self.B_bin_size)
         self.__check_B_in_param(B)
@@ -173,12 +198,16 @@ class DiffusivityMeasurement:
             else: return (Tc, Tc_err_low, Tc_err_up)
 
     def fit_function_parameters(self, B=None):
+        '''Input: B fields as array or scalar
+        Output: fitting parameters for chosen B fields
+        Description: Sets chosen B fields and returns dictionary of fit parameters with B fields as keys'''
         B = Tools.select_property(B, self.default_B_array, np.array(list(self.__RT_sweeps_per_B.keys())))
-        B = self.__round_to_decimal(np.array(B), base=self.B_bin_size)
+        B = self.__round_to_decimal(np.array(B), base=self.B_bin_size)  # This and above line needed to assure B values are valid and rounded to correct decimal
         if isinstance(B, (int, float)):
             self.RTfit.read_RT_data(self.__RT_sweeps_per_B[B])
             self.parameters_RTfit[B] = self.RTfit.fit_data(fit_low_lim=self.__RT_fit_low_lim, fit_upp_lim=self.__RT_fit_upp_lim)
             return self.parameters_RTfit[B]
+        # Difference between scalar and array to be able to return dict or dict of dicts
         elif isinstance(B, (np.ndarray, list)):
             for k in B:
                 self.RTfit.read_RT_data(self.__RT_sweeps_per_B[k])
@@ -186,21 +215,25 @@ class DiffusivityMeasurement:
             return self.parameters_RTfit
         else: raise TypeError('input parameters must have correct type. check input parameters')
 
-    def set_RT_fit_limits(self, fit_low_lim, fit_upp_lim):
+    def set_RT_fit_limits(self, fit_low_lim, fit_upp_lim):  # sets upper and lower limit for the fits of RT sweeps
         self.__RT_fit_low_lim = fit_low_lim
         self.__RT_fit_upp_lim = fit_upp_lim
 
-    def get_RT_fit_limits(self):
+    def get_RT_fit_limits(self): # gets upper and lower limit for the fits of RT sweeps
         return (self.__RT_fit_low_lim, self.__RT_fit_upp_lim)
 
     def fit_function(self, B=None, T=None):
+        '''Input: B field as array or scalar, Temperature T as array, dict or scalar
+        Output: tuple of arrays, scalars or dicts of the fitted RT values
+        Description: Sets B to valid values and checks if fit parameters exist. Varying tuple entries depending on input of B and T.
+        For T=None, the T array is returned as well. Possible to hand over personalized T arrays or the T arrays of the measurement corresponding to the B fields entered'''
         B = Tools.select_property(B, self.default_B_array, np.array(list(self.__RT_sweeps_per_B.keys())))
         B = self.__round_to_decimal(np.array(B), base=self.B_bin_size)
         self.__check_B_in_param(B)
         if isinstance(B, (int, float)):
             return self.RTfit.return_RTfit(*self.set_temperature_array(T), self.parameters_RTfit[B])
         elif isinstance(T, (dict)) and isinstance(B, (np.ndarray, list)):
-            if not set(list(T.keys())).issubset(B):
+            if not set(list(T.keys())).issubset(B):  # used to check if B fields of T array (keys) are included in the given B values
                 raise TypeError("B values are not matching. Please revise B values of temperature dictionary")
             for t, k in zip(T.values(), B):
                 T_data, return_T = self.set_temperature_array(t)
@@ -210,7 +243,7 @@ class DiffusivityMeasurement:
                 T_data, return_T = self.set_temperature_array(T)
                 self.fitted_RTvalues[k] = self.RTfit.return_RTfit(T_data, return_T, self.parameters_RTfit[k])
             self.fitted_RTvalues = self.__unpack_tuple_dictionary(self.fitted_RTvalues)
-        if return_T:
+        if return_T:  # self.fitted_RTvalues is a dictionary with tuples as values. To keep systematic, a tuple of dicts must be returned, as happend here
             T_fit, R_fit = ({}, {})
             for key, value in self.fitted_RTvalues.items():
                 T_fit[key], R_fit[key] = (value['T'], value['R'])
@@ -218,10 +251,14 @@ class DiffusivityMeasurement:
         else: return self.fitted_RTvalues
 
     def set_temperature_array(self,T):
+        '''Input: T array
+        Output: Evaluated T array
+        Description: Sets T array correctly according to specifications: if None: maximal T range of measurement, else return T. Also, this method sets
+        if T array should be returned as well in fit_function'''
         request_eval_array = False
         if T is None:
             T_min = np.inf; T_max = 0
-            for value in self.__RT_sweeps_per_B.values():
+            for value in self.__RT_sweeps_per_B.values():  # looking for max (min) values
                 if np.min(value['T']) < T_min:
                     T_min = np.min(value['T'])
                 if np.max(value['T']) > T_max:
@@ -236,6 +273,9 @@ class DiffusivityMeasurement:
         return (T_array, request_eval_array)
 
     def __check_B_in_param(self, B):
+        '''Input: B array
+        Output: -
+        Description: Checks whether B fields in B array have already been fitted, otherwise calls fit_function_parameters'''
         not_in_param_scalar = isinstance(B, (int,float)) and B not in self.parameters_RTfit.keys()
         not_in_param_array = isinstance(B, (list, np.ndarray)) and not set(B).issubset(set(list(self.parameters_RTfit.keys())))
         if not_in_param_scalar or not_in_param_array:
@@ -243,7 +283,7 @@ class DiffusivityMeasurement:
         elif not isinstance(B, (int, float, list,np.ndarray)):
             raise TypeError('input parameters must have correct type. check input parameters')
 
-    def __unpack_tuple_dictionary(self, dict_input):
+    def __unpack_tuple_dictionary(self, dict_input):  # returns dictionary 
         return_dict = {}
         for key, value in dict_input.items():
             return_dict[key] = {'T': value[0], 'R': value[1]}
@@ -288,13 +328,8 @@ class DiffusivityMeasurement:
 
         def calc_Bc2_T_fit(self):
             T_fit_array, Bc2_fit_array = Tools.select_values(self.Bc2vsT['T'], self.Bc2vsT['Bc2'], self.low_lim, self.upp_lim)
-            # print(self.Bc2vsT['T'])
-            # print(T_fit_array)
-            # print('\n')
-            # print(self.Bc2vsT['Bc2'])
-            # print(Bc2_fit_array)
-            # print(len(self.Bc2vsT['T']), len(T_fit_array))
-            # print(len(self.Bc2vsT['Bc2']), len(Bc2_fit_array))
+            if T_fit_array==[]:
+                raise ValueError('chosen fit limits result in empty array. please change fit limits')
             self.__dBc2dT, self.__B_0, r_value, _, self.__err_dBc2dT = \
                 linregress(T_fit_array, Bc2_fit_array)
             self.__r_squared = r_value**2
@@ -319,15 +354,28 @@ class RTfit():
         self.curve_fit_options = {}
         self.fit_covariance_matrix = {}
 
-        self.T_meas_error_pp = 0.0125 # in percent, estimated interpolation error
-        self.T_meas_error_std = 0.02 # standard deviation of measurements at 4Kelvin
-        self.R_meas_error_pp = 0.017 # relative resistance error from resistance measurement
+        self.T_meas_error_pc = 0.0125 # in percent, estimated interpolation error
+        self.T_meas_error_std_dev = 0.02 # standard deviation of measurements at 4Kelvin
+        self.R_meas_error_pc = 0.017 # relative resistance error from resistance measurement
 
     def read_RT_data(self, data):
-        self.T, self.R = Tools.read_data_to_properties(data)
+    # TODO: look if it is necessary to check whether data has something in it!
+        if type(data) is dict:
+            self.T, self.R = (np.asarray(data['T']), np.asarray(data['R']))
+        elif type(data) is np.ndarray:
+            shape = np.shape(data)
+            if shape[0] is 2:
+                self.T, self.R = (np.asarray(data[0,:]), np.asarray(data[1,:]))
+            elif shape[1] is 2:
+                self.T, self.R = (np.asarray(data[:,0]), np.asarray(data[:,1]))
+            else: raise ValueError('array has the shape ' + str(shape))
+        elif type(data) is tuple:
+            self.T, self.R = data
 
     def fit_data(self, fit_low_lim=None, fit_upp_lim=None, R_NC=None):
         T, R = Tools.select_values(self.T, self.R, fit_low_lim, fit_upp_lim)
+        if T==[]:
+            raise ValueError('chosen fit limits result in empty array. please change fit limits')
         if self.fit_function_type is "richards":
             self.__define_fitting_parameters_richards(R_NC)
             self.fit_function = self.richards
@@ -414,8 +462,8 @@ class RTfit():
     def __Tc_error(self, Tc):
         T_data_from_below = self.T[bisect_left(self.T, Tc) - 1]
         T_data_from_above = self.T[bisect_left(self.T, Tc)]
-        T_err_low = abs(Tc - T_data_from_below - self.T_meas_error_pp * T_data_from_below - self.T_meas_error_std)
-        T_err_up = abs(T_data_from_above + self.T_meas_error_pp * T_data_from_above + self.T_meas_error_std - Tc)
+        T_err_low = abs(Tc - T_data_from_below - self.T_meas_error_pc * T_data_from_below - self.T_meas_error_std_dev)
+        T_err_up = abs(T_data_from_above + self.T_meas_error_pc * T_data_from_above + self.T_meas_error_std_dev - Tc)
         return (T_err_low, T_err_up)
 
 
@@ -428,22 +476,6 @@ class Tools():
         elif val is 'all':
             return args[1]
         else: return val
-
-    @staticmethod
-    def read_data_to_properties(data):
-    # TODO: look if it is necessary to check whether data has something in it!
-    # TODO: Check to make this function more useful and not only for RT fit class
-        if type(data) is dict:
-            return (np.asarray(data['T']), np.asarray(data['R']))
-        elif type(data) is np.ndarray:
-            shape = np.shape(data)
-            if shape[0] is 2:
-                return (np.asarray(data[0,:]), np.asarray(data[1,:]))
-            elif shape[1] is 2:
-                return (np.asarray(data[:,0]), np.asarray(data[:,1]))
-            else: raise ValueError('array has the shape ' + str(shape))
-        elif type(data) is tuple:
-            return data
 
     @staticmethod
     def select_values(X, Y, fit_low_lim, fit_upp_lim):

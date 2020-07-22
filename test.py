@@ -1,13 +1,38 @@
 from diffusivity import *
 
+#T2=DiffusivityMeasurement('./testing_meas/200212_200109A_diffusweep.mat')
 T2=DiffusivityMeasurement('./testing_meas/200212_200109A_diffusweep.mat')
 T2.RTfit.fit_function_type = 'richards'
 # print(T2.fit_function_parameters())
 # print(T2.fit_function_parameters(B=0.1))
 #print(T2.fit_function_parameters(B='all'))
-T2.fit_function_parameters(B='all')
-print(T2.calc_diffusivity(fit_low_lim=7, fit_upp_lim=8))
-print(T2.Bc2_vs_T())
+
+
+# T2.fit_function_parameters(B=[1,2])
+# print(T2.parameters_RTfit)
+# T2.set_RT_fit_limits(6,9)
+# T2.fit_function_parameters(B=[1,2])
+# print(T2.parameters_RTfit)
+# T2.set_RT_fit_limits(7,8)
+# T2.fit_function_parameters(B=[1,2])
+# print(T2.parameters_RTfit)
+
+#T2.get_sheet_resistance(upp_lim=107.18)
+
+
+# print(T2.fit_function(B=[1.3, 2.4]))
+# print(T2.parameters_RTfit)
+# print(T2.fitted_RTvalues)
+# T2.fit_function_parameters(B='all')
+# T2.calc_diffusivity()
+# print(T2.get_Dfit_properties())
+# print(T2.Bc2_vs_T())
+# print(T2.Bc2vsT_fit.linear_fit())
+
+#B=[1,2,3]
+#T, R = T2.R_vs_T()
+
+
 #T2.fit_function_parameters(B='all').values()
 #t,r = T2.R_vs_T(B=0.1)
 #print(T2.fit_function(t,B=0.1))
