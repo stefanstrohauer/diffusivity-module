@@ -256,11 +256,12 @@ class DiffusivityMeasurement:
         def linear_fit(self, T=None):
             T_min_def = np.min(self.Bc2vsT['T'])
             T_max_def = np.max(self.Bc2vsT['T'])
+            print(T)
             T = Tools.select_property(T, np.arange(T_min_def, T_max_def, self.linear_fit_T_default_spacing))
-            if T is None:
-                return (T, self.dBc2dT*T + self.B_0)
+            if T is np.arange(T_min_def, T_max_def, self.linear_fit_T_default_spacing):
+                return (T, self.__dBc2dT*T + self.__B_0)
             elif isinstance(T, (list, np.ndarray)):
-                return self.dBc2dT*T + self.B_0
+                return self.__dBc2dT*T + self.__B_0
             else:
                 raise TypeError('wrong type of input parameter T. Please check input parameters')
 
@@ -433,5 +434,3 @@ class Tools():
             else: raise ValueError('array has the shape ' + str(shape))
         elif type(data) is tuple:
             return data
-
-
