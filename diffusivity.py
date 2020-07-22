@@ -287,7 +287,6 @@ class DiffusivityMeasurement:
                 raise TypeError('wrong type of input parameter T. Please check input parameters')
 
         def calc_Bc2_T_fit(self):
-            print(self.low_lim, self.upp_lim)
             T_fit_array, Bc2_fit_array = Tools.select_values(self.Bc2vsT['T'], self.Bc2vsT['Bc2'], self.low_lim, self.upp_lim)
             # print(self.Bc2vsT['T'])
             # print(T_fit_array)
