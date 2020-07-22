@@ -6,10 +6,10 @@ class DiffusivityMeasurement:
     Description: This class contains all properties concerning the preparation of the measurement data. Also,
     its methods control the workflow to determine the electron diffusivity.'''
 
-    def __init__(self, filename, fit_function='richards'): # to see why it is cleaner to create new object
+    def __init__(self, filename, fit_function='richards', key_w_data='data'): # to see why it is cleaner to create new object
                                   # https://stackoverflow.com/questions/29947810/reusing-instances-of-objects-vs-creating-new-ones-with-every-update
         self.filename = filename
-        self.key_w_data = 'data'
+        self.key_w_data = key_w_data
         self._raw_data = self.__import_file_mat()
         self.time_sweeps = []
         self.T_sweeps = []
@@ -18,6 +18,8 @@ class DiffusivityMeasurement:
         self.__RT_sweeps_per_B = {}
         self.parameters_RTfit = {}
         self.fitted_RTvalues = {}
+        self.__RT_fit_low_lim = 0
+        self.__RT_fit_upp_lim = np.inf
 
         self.diffusivity = 0
         self.diffusivity_err = 0
@@ -175,14 +177,21 @@ class DiffusivityMeasurement:
         B = self.__round_to_decimal(np.array(B), base=self.B_bin_size)
         if isinstance(B, (int, float)):
             self.RTfit.read_RT_data(self.__RT_sweeps_per_B[B])
-            self.parameters_RTfit[B] = self.RTfit.fit_data()
+            self.parameters_RTfit[B] = self.RTfit.fit_data(fit_low_lim=self.__RT_fit_low_lim, fit_upp_lim=self.__RT_fit_upp_lim)
             return self.parameters_RTfit[B]
         elif isinstance(B, (np.ndarray, list)):
             for k in B:
                 self.RTfit.read_RT_data(self.__RT_sweeps_per_B[k])
-                self.parameters_RTfit[k] = self.RTfit.fit_data()
+                self.parameters_RTfit[k] = self.RTfit.fit_data(fit_low_lim=self.__RT_fit_low_lim, fit_upp_lim=self.__RT_fit_upp_lim)
             return self.parameters_RTfit
         else: raise TypeError('input parameters must have correct type. check input parameters')
+
+    def set_RT_fit_limits(self, fit_low_lim, fit_upp_lim):
+        self.__RT_fit_low_lim = fit_low_lim
+        self.__RT_fit_upp_lim = fit_upp_lim
+
+    def get_RT_fit_limits(self):
+        return (self.__RT_fit_low_lim, self.__RT_fit_upp_lim)
 
     def fit_function(self, B=None, T=None):
         B = Tools.select_property(B, self.default_B_array, np.array(list(self.__RT_sweeps_per_B.keys())))
@@ -278,7 +287,8 @@ class DiffusivityMeasurement:
                 raise TypeError('wrong type of input parameter T. Please check input parameters')
 
         def calc_Bc2_T_fit(self):
-            T_fit_array, Bc2_fit_array = self.__select_T_Bc2()
+            print(self.low_lim, self.upp_lim)
+            T_fit_array, Bc2_fit_array = Tools.select_values(self.Bc2vsT['T'], self.Bc2vsT['Bc2'], self.low_lim, self.upp_lim)
             # print(self.Bc2vsT['T'])
             # print(T_fit_array)
             # print('\n')
@@ -292,15 +302,6 @@ class DiffusivityMeasurement:
             self.__D = -4*Boltzmann/(pi*elementary_charge*self.__dBc2dT)*1e4
             self.__err_D = abs(4*Boltzmann/(pi*elementary_charge*(self.__dBc2dT**2))*self.__err_dBc2dT)
             self.Tc = -self.__B_0/self.__dBc2dT
-
-        def __select_T_Bc2(self):
-            T_Bc2 = np.array([self.Bc2vsT['T'], self.Bc2vsT['Bc2']]).transpose()
-            T_Bc2 = T_Bc2[T_Bc2[:,0].argsort()]
-            #TODO: check for a better condition where only one line is used
-            T_Bc2 = T_Bc2[T_Bc2[:,0] > self.low_lim, :]
-            T_Bc2 = T_Bc2[T_Bc2[:,0] < self.upp_lim, :]
-            T_array, Bc2_array = (T_Bc2[:,0], T_Bc2[:,1])
-            return (T_array, Bc2_array)
 
         def get_fit_properties(self):
             return (self.__D, self.__dBc2dT, self.__B_0, self.__err_D, self.__err_dBc2dT, self.__r_squared)
@@ -326,7 +327,8 @@ class RTfit():
     def read_RT_data(self, data):
         self.T, self.R = Tools.read_data_to_properties(data)
 
-    def fit_data(self, R_NC=None):
+    def fit_data(self, fit_low_lim=None, fit_upp_lim=None, R_NC=None):
+        T, R = Tools.select_values(self.T, self.R, fit_low_lim, fit_upp_lim)
         if self.fit_function_type is "richards":
             self.__define_fitting_parameters_richards(R_NC)
             self.fit_function = self.richards
@@ -443,3 +445,13 @@ class Tools():
             else: raise ValueError('array has the shape ' + str(shape))
         elif type(data) is tuple:
             return data
+
+    @staticmethod
+    def select_values(X, Y, fit_low_lim, fit_upp_lim):
+        XY_data = np.array([X, Y]).transpose()
+        XY_data = XY_data[XY_data[:,0].argsort()]
+        #TODO: check for a better condition where only one line is used
+        XY_data = XY_data[XY_data[:,0] >= fit_low_lim, :]
+        XY_data = XY_data[XY_data[:,0] <= fit_upp_lim, :]
+        T_array, Bc2_array = (XY_data[:,0], XY_data[:,1])
+        return (T_array, Bc2_array)
