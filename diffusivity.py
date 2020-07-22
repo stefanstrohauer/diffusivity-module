@@ -89,7 +89,7 @@ class DiffusivityMeasurement:
         # TODO: rename __array_w_err, __array_dict_w_err, error_std
         # TODO: abbreviation of percent: pc
         B = Tools.select_property(B, self.default_B_array, np.array(list(self.__RT_sweeps_per_B.keys())))
-        B = self.__round_to_decimal(B, base=self.B_bin_size)
+        B = self.__round_to_decimal(np.array(B), base=self.B_bin_size)
         if isinstance(B, (int, float)) and not(err):
             return (self.__array_w_err(B, 'T'), self.__array_w_err(B, 'R'))
         elif isinstance(B, (int, float)) and err:
@@ -148,7 +148,7 @@ class DiffusivityMeasurement:
 
     def get_Tc(self, B=None, err=False):
         B = Tools.select_property(B, self.default_B_array, np.array(list(self.__RT_sweeps_per_B.keys())))
-        B = self.__round_to_decimal(B, base=self.B_bin_size)
+        B = self.__round_to_decimal(np.array(B), base=self.B_bin_size)
         if isinstance(B, (int,float)) and B not in self.parameters_RTfit.keys():
             raise KeyError('no fit parameters found for the asked B field. Please update parameters_RTfit property')
         elif isinstance(B, (list, np.ndarray)) and not set(B).issubset(set(list(self.parameters_RTfit.keys()))):
@@ -183,24 +183,32 @@ class DiffusivityMeasurement:
             return self.parameters_RTfit
         else: raise TypeError('input parameters must have correct type. check input parameters')
 
-    def fit_function(self, T=None, B=None):
+    def fit_function(self, B=None, T=None):
         B = Tools.select_property(B, self.default_B_array, np.array(list(self.__RT_sweeps_per_B.keys())))
         if isinstance(B, (int, float)):
             self.fit_function_parameters(B)
             return self.RTfit.return_RTfit(*self.set_temperature_array(T), self.parameters_RTfit[B])
         if not set(B).issubset(set(list(self.parameters_RTfit.keys()))):
             self.fit_function_parameters(B)
-        elif isinstance(T, (dict)) and isinstance(B, (np.ndarray, list)):
+        if isinstance(T, (dict)) and isinstance(B, (np.ndarray, list)):
             if not set(list(T.keys())).issubset(B):
                 raise TypeError("B values are not matching. Please revise B values of temperature dictionary")
             for t, k in zip(T.values(), B):
-                self.fitted_RTvalues[k] = self.RTfit.return_RTfit(*self.set_temperature_array(t), self.parameters_RTfit[k])
+                T_data, return_T = self.set_temperature_array(t)
+                self.fitted_RTvalues[k] = self.RTfit.return_RTfit(T_data, return_T, self.parameters_RTfit[k])
             return self.fitted_RTvalues
         elif isinstance(B, (np.ndarray, list)):
             for k in B:
-                self.fitted_RTvalues[k] = self.RTfit.return_RTfit(*self.set_temperature_array(T), self.parameters_RTfit[k])
-            return self.fitted_RTvalues
+                T_data, return_T = self.set_temperature_array(T)
+                self.fitted_RTvalues[k] = self.RTfit.return_RTfit(T_data, return_T, self.parameters_RTfit[k])
         else: raise TypeError('input parameters must have correct type. check input parameters')
+        print(return_T)
+        if return_T:
+            T_fit, R_fit = ({}, {})
+            for key, value in self.fitted_RTvalues.items():
+                T_fit[key], R_fit[key] = (value[0], value[1])
+            return (T_fit, R_fit)
+        else: return self.fitted_RTvalues
 
     def set_temperature_array(self,T):
         request_eval_array = False
@@ -256,9 +264,8 @@ class DiffusivityMeasurement:
         def linear_fit(self, T=None):
             T_min_def = np.min(self.Bc2vsT['T'])
             T_max_def = np.max(self.Bc2vsT['T'])
-            print(T)
-            T = Tools.select_property(T, np.arange(T_min_def, T_max_def, self.linear_fit_T_default_spacing))
-            if T is np.arange(T_min_def, T_max_def, self.linear_fit_T_default_spacing):
+            if T is None:
+                T = Tools.select_property(T, np.arange(T_min_def, T_max_def, self.linear_fit_T_default_spacing))
                 return (T, self.__dBc2dT*T + self.__B_0)
             elif isinstance(T, (list, np.ndarray)):
                 return self.__dBc2dT*T + self.__B_0
