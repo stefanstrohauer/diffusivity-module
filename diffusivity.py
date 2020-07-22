@@ -1,6 +1,11 @@
 from import_lib import *
 
 class DiffusivityMeasurement:
+    '''Input: filename with raw data, (fit function type)
+    Output: calculation of diffusivity and related values that are stored and/or returned by executed methods
+    Description: This class contains all properties concerning the preparation of the measurement data. Also,
+    its methods control the workflow to determine the electron diffusivity.'''
+
     def __init__(self, filename, fit_function='richards'): # to see why it is cleaner to create new object
                                   # https://stackoverflow.com/questions/29947810/reusing-instances-of-objects-vs-creating-new-ones-with-every-update
         self.filename = filename
@@ -25,34 +30,35 @@ class DiffusivityMeasurement:
         self.sheet_resistance = self.get_sheet_resistance()
         self.RTfit = RTfit(fit_function)
         self.Bc2vsT_fit = None
-        #self.RTfit.read_RT_data(self.__RT_sweeps_per_B[4.0])
-
-    def get_RT(self):
-        return self.__RT_sweeps_per_B
 
     def __import_file_mat(self):
-        """reads string with filename and returns .mat data file as list of lists"""
+        """Input:filename (from properties)
+        Output: list of lists of measurement data
+        Description: reads string with filename and returns .mat data file as list of lists"""
         return io.loadmat(self.filename, squeeze_me=True)[self.key_w_data]
 
     def _read_B_sweeps_to_properties(self, index_t=8, index_B=9, index_R=10):
-        """reads the different measurement quantities from the raw data into class properties"""
+        """Input: raw measurement data, indices of data lists in raw data
+        Output: sets measurement data class properties
+        Description: reads the different measurement quantities from the raw data into class properties"""
         self.time_sweeps = [i[index_t] for i in self._raw_data]
         self.T_sweeps = self.__time_temperature_mapping()
         self.B_sweeps = [i[index_B] for i in self._raw_data]
         self.R_sweeps = [i[index_R] for i in self._raw_data]
 
     def __rearrange_B_sweeps(self):
-        """rearranges the raw data saved in B-sweeps into RT-sweeps"""
+        """Input: T-sweeps, B-sweeps, R-sweeps
+        Output: dictionary {B-field: {T,R}}
+        Description: rearranges the raw data saved in B-sweeps into RT-sweeps"""
         TBR_dict = {'T': self.__flatten_list(self.T_sweeps),
                     'B': self.__flatten_list(self.B_sweeps),
                     'R': self.__flatten_list(self.R_sweeps)}
-        TBR_dict['B'] = self.__round_to_base(TBR_dict['B'], base=self.B_bin_size)
+        TBR_dict['B'] = self.__round_to_decimal(TBR_dict['B'], base=self.B_bin_size)
         for t, b, r in zip (TBR_dict['T'], TBR_dict['B'], TBR_dict['R']):
             try:
                 self.__RT_sweeps_per_B[b].append([t,r])
             except:
                 self.__RT_sweeps_per_B[b] = [[t,r]]
-
         for key, value in self.__RT_sweeps_per_B.items():
             value=np.asarray(value)
             self.__RT_sweeps_per_B[key] = {'T': value[:,0], 'R':value[:,1]}
@@ -60,7 +66,12 @@ class DiffusivityMeasurement:
     def __flatten_list(self, array):
         return np.concatenate(array).ravel()
 
-    def __round_to_base(self, x, base):
+    def __round_to_decimal(self, x, base):
+      """Input: scalar or array
+      Output: scalar or array rounded to arbitrary decimal number, e.g. 0.3
+      Description: rounds to arbitrary decimal number. Does so by multiplying the decimal to round with
+      the number of times the decimal fits into the scalar/array. In case the scalar/array has less decimals than
+      intended to round, a further rounding is performed as outer function."""
       prec = str(base)[::-1].find('.')
       return np.round(base * np.round(x/base), prec)
 
@@ -78,7 +89,7 @@ class DiffusivityMeasurement:
         # TODO: rename __array_w_err, __array_dict_w_err, error_std
         # TODO: abbreviation of percent: pc
         B = Tools.select_property(B, self.default_B_array, np.array(list(self.__RT_sweeps_per_B.keys())))
-        B = self.__round_to_base(B, base=self.B_bin_size)
+        B = self.__round_to_decimal(B, base=self.B_bin_size)
         if isinstance(B, (int, float)) and not(err):
             return (self.__array_w_err(B, 'T'), self.__array_w_err(B, 'R'))
         elif isinstance(B, (int, float)) and err:
@@ -132,11 +143,12 @@ class DiffusivityMeasurement:
         # TODO: split calc diff and print diff (extra method for that)
         B = np.array(list(self.__RT_sweeps_per_B.keys()))
         self.Bc2vsT_fit = self.Bc2vsTfit((*self.get_Tc(B='all', err=True), B), fit_low_lim, fit_upp_lim)
+        self.diffusivity, _, _, self.diffusivity_err, _, _ = self.Bc2vsT_fit.calc_Bc2_T_fit()
         return self.Bc2vsT_fit.calc_Bc2_T_fit()
 
     def get_Tc(self, B=None, err=False):
         B = Tools.select_property(B, self.default_B_array, np.array(list(self.__RT_sweeps_per_B.keys())))
-        B = self.__round_to_base(B, base=self.B_bin_size)
+        B = self.__round_to_decimal(B, base=self.B_bin_size)
         if isinstance(B, (int,float)) and B not in self.parameters_RTfit.keys():
             raise KeyError('no fit parameters found for the asked B field. Please update parameters_RTfit property')
         elif isinstance(B, (list, np.ndarray)) and not set(B).issubset(set(list(self.parameters_RTfit.keys()))):
@@ -279,8 +291,6 @@ class DiffusivityMeasurement:
             T_Bc2 = T_Bc2[T_Bc2[:,0] < fit_up_lim, :]
             T_array, Bc2_array = (T_Bc2[:,0], T_Bc2[:,1])
             return (T_array, Bc2_array)
-
-
 
         def __get_fit_properties(self):
             return (self.__D, self.__dBc2dT, self.__B_0, self.__err_D, self.__err_dBc2dT, self.__r_squared)
