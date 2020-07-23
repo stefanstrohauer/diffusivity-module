@@ -38,14 +38,18 @@ class DiffusivityMeasurement:
         self.Bc2vsT_fit = None
 
     def __import_file(self, key_with_data=None):
-        """Input:filename (from properties)
-        Output: list of lists of measurement data
-        Description: reads string with filename and returns .mat data file as list of lists"""
+        ## TODO: select directly whether data or data_old if none, otherwise take
+        """Input: data key with measurement data, filename (from properties)
+        Output: structured measurement data
+        Description: reads string with filename and returns measurement data from json and .mat files. Also, reads into the
+        corresponding attributes the measurement data. Differentiates between json and mat file through setting the key_with_data parameter"""
         if key_with_data is None:
-            with open(self.filename) as json_data:
-                data = js.load(json_data)
-                self.time_sweeps, self.T_sample_sweeps, self.T_PCB_sweeps, self.T_sample_ohms_sw, self.T_PCB_ohms_sw, self.B_sweeps, self.R_sweeps = \
-                    self.__return_measurement_data(data['sweep'], 't', 'T_sample', 'T_PCB', 'T_sample_ohms', 'T_PCB_ohms', 'B', 'R')
+            if set('.json').issubset(set(self.filename)):
+                with open(self.filename) as json_data:
+                    data = js.load(json_data)
+                    self.time_sweeps, self.T_sample_sweeps, self.T_PCB_sweeps, self.T_sample_ohms_sw, self.T_PCB_ohms_sw, self.B_sweeps, self.R_sweeps = \
+                        self.__return_measurement_data(data['sweep'], 't', 'T_sample', 'T_PCB', 'T_sample_ohms', 'T_PCB_ohms', 'B', 'R')
+            else: raise Exception('wrong data type: Please check if correct parameters were passed')
         else:
             data = io.loadmat(self.filename, squeeze_me=True)[self.key_w_data]
             self.time_sweeps, self.B_sweeps, self.R_sweeps = self.__return_measurement_data(data, 8, 9, 10)
@@ -53,9 +57,9 @@ class DiffusivityMeasurement:
         return data
 
     def __return_measurement_data(self, data, *args):
-        """Input: raw measurement data, indices of data lists in raw data
-        Output: sets measurement data class properties
-        Description: reads the different measurement quantities from the raw data into class properties""" #index_t=8, index_B=9, index_R=10
+        """Input: raw measurement data, indices/keys of measurment quantities dict in raw data
+        Output: list of measurement quantites to be unpacked
+        Description: reads the different measurement quantities from the raw data into a list that can be unpacked""" #index_t=8, index_B=9, index_R=10
         data_to_properties = []
         for arg in args:
             data_to_properties.append([i[arg] for i in data])
@@ -232,9 +236,12 @@ class DiffusivityMeasurement:
             return return_fit_param_dict
         else: raise TypeError('input parameters must have correct type. check input parameters')
 
-    def set_RT_fit_limits(self, fit_low_lim, fit_upp_lim):  # sets upper and lower limit for the fits of RT sweeps
-        self.__RT_fit_low_lim = fit_low_lim
-        self.__RT_fit_upp_lim = fit_upp_lim
+    def calc_RT_fits(self):
+        self.fit_function_parameters(B='all')
+
+    # def set_RT_fit_limits(self, fit_low_lim, fit_upp_lim):  # sets upper and lower limit for the fits of RT sweeps
+    #     self.__RT_fit_low_lim = fit_low_lim
+    #     self.__RT_fit_upp_lim = fit_upp_lim
 
     def get_RT_fit_limits(self): # gets upper and lower limit for the fits of RT sweeps
         return (self.__RT_fit_low_lim, self.__RT_fit_upp_lim)
@@ -300,7 +307,7 @@ class DiffusivityMeasurement:
         elif not isinstance(B, (int, float, list,np.ndarray)):
             raise TypeError('input parameters must have correct type. check input parameters')
 
-    def __unpack_tuple_dictionary(self, dict_input):  # returns dictionary
+    def __unpack_tuple_dictionary(self, dict_input):  # returns dictionary with keys for T and R taken from the dictionary of tuples
         return_dict = {}
         for key, value in dict_input.items():
             return_dict[key] = {'T': value[0], 'R': value[1]}
@@ -308,7 +315,9 @@ class DiffusivityMeasurement:
 
 
     class Bc2vsTfit():
-        """docstring for Bc2vsTfit."""
+        """This class object contains the fit of the Bc2-T relation, performing all necessary steps to calculate up to the diffusivity.
+        It takes as input the Bc2 and T arrays determined from the RT fitting. These values are fitted with linear regression and the
+        diffusivity and related values are calculated and stored within the class object. It is a nested class from DiffusivityMeasurement."""
 
         def __init__(self, data, fit_low_lim, fit_upp_lim):
             self.__D = 0
@@ -323,16 +332,20 @@ class DiffusivityMeasurement:
             self.B_field_meas_error_pc = 0.02 # variation of 2% in voltage monitor results in variation of 1% in Bfield
             self.B_field_meas_error_round = 0.001 # tbreviewed, in Tesla, measurement error + rounding error
             self.linear_fit_T_default_spacing = 0.05
+            # # TODO: implement linspace instead of np.arange for this
 
-            self.set_properties(data)
-            self.low_lim = Tools.select_property(fit_low_lim, np.sort(self.Bc2vsT['T'])[1])
-            self.upp_lim = Tools.select_property(fit_upp_lim, np.sort(self.Bc2vsT['T'])[-2])
+            self.set_properties(data)  # read data into attributes
+            self.low_lim = Tools.select_property(fit_low_lim, np.sort(self.Bc2vsT['T'])[1])  # determine lower fit limit, if None the minimum of T is taken
+            self.upp_lim = Tools.select_property(fit_upp_lim, np.sort(self.Bc2vsT['T'])[-2]) # determine upper fit limit, if None the maximum of T is taken
 
-        def set_properties(self, data):
+        def set_properties(self, data): # set the attributes of the class feeding them with data provided from the outer class
             self.Bc2vsT['T'], self.Bc2vsT['T_low_err'], self.Bc2vsT['T_upp_err'], self.Bc2vsT['Bc2'] = data
             self.Bc2vsT['Bc2_err'] = self.Bc2vsT['Bc2']*self.B_field_meas_error_pc + self.B_field_meas_error_round
 
         def linear_fit(self, T=None):
+            '''Input: Temperature values to be evaluated for Bc2
+            Output: Bc2-array or (T,Bc2) tuple
+            Description: takes the T array and, using the slope and the intercept calculated, evalates T values.'''
             T_min_def = np.min(self.Bc2vsT['T'])
             T_max_def = np.max(self.Bc2vsT['T'])
             if T is None:
@@ -344,6 +357,10 @@ class DiffusivityMeasurement:
                 raise TypeError('wrong type of input parameter T. Please check input parameters')
 
         def calc_Bc2_T_fit(self):
+            '''Input: uses attributes from the class object
+            Output: sets attributes of the class object
+            Description: Defines T-Bc2 values to be fitted through lower and upper fit limit. Calculates the fit with linear regression.
+            Calculates diffusivity, diffusivity error and Tc(0T).'''
             T_fit_array, Bc2_fit_array = Tools.select_values(self.Bc2vsT['T'], self.Bc2vsT['Bc2'], self.low_lim, self.upp_lim)
             if T_fit_array.size == 0:
                 raise ValueError('chosen fit limits result in empty array. please change fit limits')
@@ -351,31 +368,40 @@ class DiffusivityMeasurement:
                 linregress(T_fit_array, Bc2_fit_array)
             self.__r_squared = r_value**2
             self.__D = -4*Boltzmann/(pi*elementary_charge*self.__dBc2dT)*1e4
-            self.__err_D = abs(4*Boltzmann/(pi*elementary_charge*(self.__dBc2dT**2))*self.__err_dBc2dT)
+            self.__err_D = abs(4*Boltzmann/(pi*elementary_charge*(self.__dBc2dT**2))*self.__err_dBc2dT)  # from gaussian error propagation
             self.Tc = -self.__B_0/self.__dBc2dT
 
-        def get_fit_properties(self):
+        def get_fit_properties(self):  # returns the fit properties/physical properties since they are private
             return (self.__D, self.__dBc2dT, self.__B_0, self.__err_D, self.__err_dBc2dT, self.__r_squared)
 
 
 class RTfit():
-    """docstring for RTfit."""
+    """This class object describes an RT fit, including all necessary parameters, attributes and methods to determine an RT fit.
+    Data is read into the object as T and R arrays. Data is fitted with gaussian cdf/richards function. Fit limits for the RT fits can be defined.
+    Fit can be returned as T and R arrays. Transition temperature Tc can be returned (optionally with error)"""
 
     def __init__(self, fit_function_type = "richards"):
         self.fit_function_type = fit_function_type
         self.fit_function = self.richards
         self.fit_function_T_default_spacing = 0.1
+        # # TODO: linspace instead of arange, change to number of data points
         self.T = 0
         self.R = 0
         self.fit_param = {'output':{}, 'start_values':{}}
         self.curve_fit_options = {}
         self.fit_covariance_matrix = {}
+        self.__set_fit_parameters = {}
 
         self.T_meas_error_pc = 0.0125 # in percent, estimated interpolation error
         self.T_meas_error_std_dev = 0.02 # standard deviation of measurements at 4Kelvin
         self.R_meas_error_pc = 0.017 # relative resistance error from resistance measurement
 
     def read_RT_data(self, data):
+        '''Input: data as dict, numpy array, tuple
+        Output: sets attributes self.T and self.R
+        Description: based on the type of data, the method is able to read out the data in several formats including:
+        dict: {'T':x, 'R':y} ; tuple: (T,R)
+        numpy.array: [[x,y], [x,y]] or [[xxx], [yyy]]'''
     # TODO: look if it is necessary to check whether data has something in it!
         if type(data) is dict:
             self.T, self.R = (np.asarray(data['T']), np.asarray(data['R']))
@@ -390,39 +416,51 @@ class RTfit():
             self.T, self.R = data
 
     def fit_data(self, fit_low_lim=None, fit_upp_lim=None, R_NC=None):
+        '''Input: fit limits
+        Output: fit parameters for one RT sweep as dictionary
+        Description: reduces the array according to fit limits. Depending on fit function, sets correct fitting parameters and calculates fit.'''
         T, R = Tools.select_values(self.T, self.R, fit_low_lim, fit_upp_lim)
-        if T==[]:
+        if T.size == 0:
             raise ValueError('chosen fit limits result in empty array. please change fit limits')
         if self.fit_function_type is "richards":
-            self.__define_fitting_parameters_richards(R_NC)
+            self.__define_fitting_parameters_richards(R_NC, **self.__set_fit_parameters)
             self.fit_function = self.richards
         elif self.fit_function_type is "gauss_cdf":
-            self.__define_fitting_parameters_gauss_cdf(R_NC)
+            self.__define_fitting_parameters_gauss_cdf(R_NC, **self.__set_fit_parameters)
             self.fit_function = self.gauss_cdf
         else: raise ValueError('only "richards" and "gauss_cdf" as possible fitting functions')
         popt, self.fit_covariance_matrix = curve_fit(self.fit_function, self.T, self.R, list(self.fit_param['start_values'].values()), **self.curve_fit_options)
         self.fit_param['output'] = {key: value for key, value in zip(self.fit_param['start_values'].keys(), popt)}
         return self.fit_param['output']
 
-    def __define_fitting_parameters_richards(self, R_NC=None):
-        '''Input:
-        Output:
+    def __define_fitting_parameters_richards(self, R_NC=None, **kwargs):
+        '''Input: normal conducting resistance
+        Output: sets starting values of fit parameters (attribute)
         Description: '''
         R_NC = Tools.select_property(R_NC, np.max(self.R))
         a,c,q = (0,1,1)
-        if self.fit_param['output'] == {}: #and all(abs(start_values_fit_param[list(start_values_fit_param.keys())[1:3]]) < 15)
-            k = R_NC  #
+        if self.fit_param['output'] == {} and kwargs == {}: #and all(abs(start_values_fit_param[list(start_values_fit_param.keys())[1:3]]) < 15)
+            k = R_NC  # upper asymptote
             nu = 1  # affects near which asymptote maximum growth occurs (nu is always > 0)
             m = a + (k-a)/np.float_power((c+1),(1/nu))  # shift on x-axis
             # TODO: take into account to change b from outside!
             t_2 = self.T[bisect_left(self.R, R_NC/2)]
-            b = 1/(m-t_2) * ( np.log( np.float_power((2*(k-a)/k),nu)-c )+np.log(q) ) # growth rate 50
+            b = 1/(m-t_2) * ( np.log( np.float_power((2*(k-a)/k),nu)-c )+np.log(q) ) # growth rate
             self.fit_param['start_values'] = {'b': b, 'm': m, 'nu': nu, 'k': k}
+        elif kwargs != {}:
+            print('I am setting the parameters!')
+            self.fit_param['output'] = {}
+            self.__define_fitting_parameters_richards()
+            print(self.fit_param['start_values'])
+            for key, value in kwargs.items():
+                self.fit_param['start_values'][key] = value
+            print(self.fit_param['start_values'])
+            self.__set_fit_parameters = {}
         else:
             self.fit_param['start_values'] = self.fit_param['output']
         self.curve_fit_options = {'maxfev': 2500, 'bounds': ([-np.inf, -np.inf, -np.inf, 0.8*R_NC], [np.inf, np.inf, np.inf, 1.2*R_NC])}
 
-    def __define_fitting_parameters_gauss_cdf(self, R_NC=None):
+    def __define_fitting_parameters_gauss_cdf(self, R_NC=None, **kwargs):
         R_NC = Tools.select_property(R_NC, np.max(self.R))
         if bisect_left(self.R, R_NC/2) < len(self.R):
             mean = self.T[bisect_left(self.R, R_NC/2)]
@@ -434,7 +472,16 @@ class RTfit():
         if sigma < 0.01:
             sigma = 0.1
         self.fit_param['start_values'] = {'scaling': R_NC, 'mean': mean, 'sigma': sigma}
+        if kwargs != {}:
+            print(self.fit_param['start_values'])
+            for key, value in kwargs:
+                self.fit_param['start_values'][key] = value
+            self.__set_fit_parameters = {}
+            print(self.fit_param['start_values'])
         self.curve_fit_options = {'maxfev': 1600, 'bounds': (-inf, inf)}
+
+    def set_fit_parameters(self, **kwargs):
+        self.__set_fit_parameters = kwargs
 
     def richards(self, t,b,m,nu,k, a=0, c=1, q=1):
         return a + (k-a)/np.float_power((c+q*np.exp(-b*(t-m))),1/nu)
