@@ -6,15 +6,19 @@ class DiffusivityMeasurement:
     Description: This class contains all properties concerning the preparation of the measurement data. Also,
     its methods control the workflow to determine the electron diffusivity.'''
 
-    def __init__(self, filename, fit_function='richards', key_w_data='data'): # to see why it is cleaner to create new object
+    def __init__(self, filename, key_w_data=None, fit_function='richards'): # to see why it is cleaner to create new object
                                   # https://stackoverflow.com/questions/29947810/reusing-instances-of-objects-vs-creating-new-ones-with-every-update
         self.filename = filename
-        self.key_w_data = key_w_data
-        self._raw_data = self.__import_file_mat()
+        self.key_w_data = key_w_data  # for old measurement schemes: data, data_old
         self.time_sweeps = []
-        self.T_sweeps = []
+        self.T_sample_sweeps = []
+        self.T_PCB_sweeps = []
+        self.T_sample_ohms_sw = []
+        self.T_PCB_ohms_sw = []
         self.B_sweeps = []
         self.R_sweeps = []
+        self._raw_data = self.__import_file(key_w_data)
+
         self.__RT_sweeps_per_B = {}
         self.parameters_RTfit = {}
         self.fitted_RTvalues = {}
@@ -28,32 +32,40 @@ class DiffusivityMeasurement:
         self.B_bin_size = 0.01 #
         self.sheet_resistance_geom_factor = 4.53 # geometry factor to determine sheet resistance 4.53=pi/ln(2)
                                                  # calculated sheet resistance of the film
-        self._read_B_sweeps_to_properties()
         self.__rearrange_B_sweeps()
         self.sheet_resistance = self.get_sheet_resistance()
         self.RTfit = RTfit(fit_function)
         self.Bc2vsT_fit = None
 
-    def __import_file_mat(self):
+    def __import_file(self, key_with_data=None):
         """Input:filename (from properties)
         Output: list of lists of measurement data
         Description: reads string with filename and returns .mat data file as list of lists"""
-        return io.loadmat(self.filename, squeeze_me=True)[self.key_w_data]
+        if key_with_data is None:
+            with open(self.filename) as json_data:
+                data = js.load(json_data)
+                self.time_sweeps, self.T_sample_sweeps, self.T_PCB_sweeps, self.T_sample_ohms_sw, self.T_PCB_ohms_sw, self.B_sweeps, self.R_sweeps = \
+                    self.__return_measurement_data(data['sweep'], 't', 'T_sample', 'T_PCB', 'T_sample_ohms', 'T_PCB_ohms', 'B', 'R')
+        else:
+            data = io.loadmat(self.filename, squeeze_me=True)[self.key_w_data]
+            self.time_sweeps, self.B_sweeps, self.R_sweeps = self.__return_measurement_data(data, 8, 9, 10)
+            self.T_sample_sweeps = self.__time_temperature_mapping(data)
+        return data
 
-    def _read_B_sweeps_to_properties(self, index_t=8, index_B=9, index_R=10):
+    def __return_measurement_data(self, data, *args):
         """Input: raw measurement data, indices of data lists in raw data
         Output: sets measurement data class properties
-        Description: reads the different measurement quantities from the raw data into class properties"""
-        self.time_sweeps = [i[index_t] for i in self._raw_data]
-        self.T_sweeps = self.__time_temperature_mapping()
-        self.B_sweeps = [i[index_B] for i in self._raw_data]
-        self.R_sweeps = [i[index_R] for i in self._raw_data]
+        Description: reads the different measurement quantities from the raw data into class properties""" #index_t=8, index_B=9, index_R=10
+        data_to_properties = []
+        for arg in args:
+            data_to_properties.append([i[arg] for i in data])
+        return data_to_properties
 
     def __rearrange_B_sweeps(self):
         """Input: T-sweeps, B-sweeps, R-sweeps
         Output: dictionary {B-field: {T,R}}
         Description: rearranges the raw data saved in B-sweeps into RT-sweeps"""
-        TBR_dict = {'T': self.__flatten_list(self.T_sweeps),
+        TBR_dict = {'T': self.__flatten_list(self.T_sample_sweeps),
                     'B': self.__flatten_list(self.B_sweeps),
                     'R': self.__flatten_list(self.R_sweeps)}
         TBR_dict['B'] = self.__round_to_decimal(TBR_dict['B'], base=self.B_bin_size)
@@ -78,12 +90,12 @@ class DiffusivityMeasurement:
       prec = str(base)[::-1].find('.')
       return np.round(base * np.round(x/base), prec)
 
-    def __time_temperature_mapping(self): # TODO: what do we do with this function, maybe change the whole data structure a bit
+    def __time_temperature_mapping(self, data): # TODO: what do we do with this function, maybe change the whole data structure a bit
         '''Input: temperature data
         Output: interpolated temperature data with same length as R and B-sweeps
         Description: For measurements without Cernox. As temperature is measured between B-sweeps, the time array is used
         to interpolate the temperature (temperature is assumed to rise almost linearly).'''
-        Temp_at_timestamp = [i[0:4] for i in self._raw_data]
+        Temp_at_timestamp = [i[0:4] for i in data]
         T_array = []
         for i,j in zip(self.time_sweeps, Temp_at_timestamp):
             t = [i[0], i[-1]]  # locations of the time and temperature data
@@ -174,6 +186,9 @@ class DiffusivityMeasurement:
     def get_Dfit_properties(self):  # Returns the values calculated in self.Bc2vsT_fit.calc_Bc2_T_fit()
         return self.Bc2vsT_fit.get_fit_properties()
 
+    def get_Bc2vsT_fit(self, T=None):
+        return self.Bc2vsT_fit.linear_fit(T)
+
     def get_Tc(self, B=None, err=False):
         '''Input: B fields, flag if error should be returned
         Output: Transition temperature Tc of RT-sweep (with lower und upper error)
@@ -209,10 +224,12 @@ class DiffusivityMeasurement:
             return self.parameters_RTfit[B]
         # Difference between scalar and array to be able to return dict or dict of dicts
         elif isinstance(B, (np.ndarray, list)):
+            return_fit_param_dict = {}
             for k in B:
                 self.RTfit.read_RT_data(self.__RT_sweeps_per_B[k])
                 self.parameters_RTfit[k] = self.RTfit.fit_data(fit_low_lim=self.__RT_fit_low_lim, fit_upp_lim=self.__RT_fit_upp_lim)
-            return self.parameters_RTfit
+                return_fit_param_dict[k] = self.parameters_RTfit[k].copy()
+            return return_fit_param_dict
         else: raise TypeError('input parameters must have correct type. check input parameters')
 
     def set_RT_fit_limits(self, fit_low_lim, fit_upp_lim):  # sets upper and lower limit for the fits of RT sweeps
@@ -283,7 +300,7 @@ class DiffusivityMeasurement:
         elif not isinstance(B, (int, float, list,np.ndarray)):
             raise TypeError('input parameters must have correct type. check input parameters')
 
-    def __unpack_tuple_dictionary(self, dict_input):  # returns dictionary 
+    def __unpack_tuple_dictionary(self, dict_input):  # returns dictionary
         return_dict = {}
         for key, value in dict_input.items():
             return_dict[key] = {'T': value[0], 'R': value[1]}
@@ -328,7 +345,7 @@ class DiffusivityMeasurement:
 
         def calc_Bc2_T_fit(self):
             T_fit_array, Bc2_fit_array = Tools.select_values(self.Bc2vsT['T'], self.Bc2vsT['Bc2'], self.low_lim, self.upp_lim)
-            if T_fit_array==[]:
+            if T_fit_array.size == 0:
                 raise ValueError('chosen fit limits result in empty array. please change fit limits')
             self.__dBc2dT, self.__B_0, r_value, _, self.__err_dBc2dT = \
                 linregress(T_fit_array, Bc2_fit_array)
