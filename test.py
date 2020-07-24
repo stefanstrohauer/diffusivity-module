@@ -1,11 +1,16 @@
 from diffusivity import *
 
 #T2=DiffusivityMeasurement('./testing_meas/200212_200109A_diffusweep.mat')
-T2=DiffusivityMeasurement('./testing_meas/200212_200109A_diffusweep.mat')
+#T2=DiffusivityMeasurement('./testing_meas/200212_200109A_diffusweep.mat', 'data')
+T2=DiffusivityMeasurement('./testing_meas/200715_200218A_diffusweep-002.json')
 T2.RTfit.fit_function_type = 'richards'
 # print(T2.fit_function_parameters())
 # print(T2.fit_function_parameters(B=0.1))
 #print(T2.fit_function_parameters(B='all'))
+
+
+T2.RTfit.set_fit_parameters(b=0.4)
+print(T2.fit_function_parameters(B=0.1))
 
 
 # T2.fit_function_parameters(B=[1,2])

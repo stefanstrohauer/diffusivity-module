@@ -112,7 +112,7 @@ class DiffusivityMeasurement:
         '''Input: B fields for which RvsT should be returned, flag to decide if error is returned
         Output: Tuple of varying size depending on err-flag including (T,R,T_err,R_err) of an RT-sweep (Resistance-Temperature-Sweep)
         Description: Depending on the input B fields "B" and the err-flag, this method returns the associated RT-sweep with error'''
-        B = Tools.select_property(B, self.default_B_array, np.array(list(self.__RT_sweeps_per_B.keys())))
+        B = Tools.selector(B, self.default_B_array, np.array(list(self.__RT_sweeps_per_B.keys())))
         B = self.__round_to_decimal(np.array(B), base=self.B_bin_size)
         if isinstance(B, (int, float)) and not(err):
             return (self.__RT_array_builder(B, 'T'), self.__RT_array_builder(B, 'R'))
@@ -198,9 +198,9 @@ class DiffusivityMeasurement:
         Output: Transition temperature Tc of RT-sweep (with lower und upper error)
         Description: Sets B array and checks if corresponding RT sweeps have been fitted. Depending on type of B, returns tuple or tuple of arrays
         with Tc values'''
-        B = Tools.select_property(B, self.default_B_array, np.array(list(self.__RT_sweeps_per_B.keys())))
+        B = Tools.selector(B, self.default_B_array, np.array(list(self.__RT_sweeps_per_B.keys())))
         B = self.__round_to_decimal(np.array(B), base=self.B_bin_size)
-        self.__check_B_in_param(B)
+        self.__checkif_B_in_param(B)
         if isinstance(B, (int,float)):
             if err is False:
                 return self.RTfit.Tc(fit_param=self.parameters_RTfit[B])[0]
@@ -220,7 +220,7 @@ class DiffusivityMeasurement:
         '''Input: B fields as array or scalar
         Output: fitting parameters for chosen B fields
         Description: Sets chosen B fields and returns dictionary of fit parameters with B fields as keys'''
-        B = Tools.select_property(B, self.default_B_array, np.array(list(self.__RT_sweeps_per_B.keys())))
+        B = Tools.selector(B, self.default_B_array, np.array(list(self.__RT_sweeps_per_B.keys())))
         B = self.__round_to_decimal(np.array(B), base=self.B_bin_size)  # This and above line needed to assure B values are valid and rounded to correct decimal
         if isinstance(B, (int, float)):
             self.RTfit.read_RT_data(self.__RT_sweeps_per_B[B])
@@ -251,9 +251,9 @@ class DiffusivityMeasurement:
         Output: tuple of arrays, scalars or dicts of the fitted RT values
         Description: Sets B to valid values and checks if fit parameters exist. Varying tuple entries depending on input of B and T.
         For T=None, the T array is returned as well. Possible to hand over personalized T arrays or the T arrays of the measurement corresponding to the B fields entered'''
-        B = Tools.select_property(B, self.default_B_array, np.array(list(self.__RT_sweeps_per_B.keys())))
+        B = Tools.selector(B, self.default_B_array, np.array(list(self.__RT_sweeps_per_B.keys())))
         B = self.__round_to_decimal(np.array(B), base=self.B_bin_size)
-        self.__check_B_in_param(B)
+        self.__checkif_B_in_param(B)
         if isinstance(B, (int, float)):
             return self.RTfit.return_RTfit(*self.set_temperature_array(T), self.parameters_RTfit[B])
         elif isinstance(T, (dict)) and isinstance(B, (np.ndarray, list)):
@@ -296,7 +296,7 @@ class DiffusivityMeasurement:
         else: raise TypeError('input parameters must have correct type. check input parameters')
         return (T_array, request_eval_array)
 
-    def __check_B_in_param(self, B):
+    def __checkif_B_in_param(self, B):
         '''Input: B array
         Output: -
         Description: Checks whether B fields in B array have already been fitted, otherwise calls fit_function_parameters'''
@@ -335,8 +335,8 @@ class DiffusivityMeasurement:
             # # TODO: implement linspace instead of np.arange for this
 
             self.set_properties(data)  # read data into attributes
-            self.low_lim = Tools.select_property(fit_low_lim, np.sort(self.Bc2vsT['T'])[1])  # determine lower fit limit, if None the minimum of T is taken
-            self.upp_lim = Tools.select_property(fit_upp_lim, np.sort(self.Bc2vsT['T'])[-2]) # determine upper fit limit, if None the maximum of T is taken
+            self.low_lim = Tools.selector(fit_low_lim, np.sort(self.Bc2vsT['T'])[1])  # determine lower fit limit, if None the minimum of T is taken
+            self.upp_lim = Tools.selector(fit_upp_lim, np.sort(self.Bc2vsT['T'])[-2]) # determine upper fit limit, if None the maximum of T is taken
 
         def set_properties(self, data): # set the attributes of the class feeding them with data provided from the outer class
             self.Bc2vsT['T'], self.Bc2vsT['T_low_err'], self.Bc2vsT['T_upp_err'], self.Bc2vsT['Bc2'] = data
@@ -349,7 +349,7 @@ class DiffusivityMeasurement:
             T_min_def = np.min(self.Bc2vsT['T'])
             T_max_def = np.max(self.Bc2vsT['T'])
             if T is None:
-                T = Tools.select_property(T, np.arange(T_min_def, T_max_def, self.linear_fit_T_default_spacing))
+                T = Tools.selector(T, np.arange(T_min_def, T_max_def, self.linear_fit_T_default_spacing))
                 return (T, self.__dBc2dT*T + self.__B_0)
             elif isinstance(T, (list, np.ndarray)):
                 return self.__dBc2dT*T + self.__B_0
@@ -387,10 +387,11 @@ class RTfit():
         # # TODO: linspace instead of arange, change to number of data points
         self.T = 0
         self.R = 0
-        self.fit_param = {'output':{}, 'start_values':{}}
-        self.curve_fit_options = {}
-        self.fit_covariance_matrix = {}
-        self.__set_fit_parameters = {}
+        self.fit_param = {'output':{}, 'start_values':{}}  # output are always the resulting fit parameters after fitting, start_values represent
+                                                           # the fit parameters values used in the beginning by the fit function
+        self.curve_fit_options = {}  # describes further fit options necessary for the fitting
+        self.fit_covariance_matrix = {}  # matrix containing implicitly fit error
+        self.__set_fit_parameters = {}  # fit parameters set by the user, default is empty
 
         self.T_meas_error_pc = 0.0125 # in percent, estimated interpolation error
         self.T_meas_error_std_dev = 0.02 # standard deviation of measurements at 4Kelvin
@@ -418,7 +419,7 @@ class RTfit():
     def fit_data(self, fit_low_lim=None, fit_upp_lim=None, R_NC=None):
         '''Input: fit limits
         Output: fit parameters for one RT sweep as dictionary
-        Description: reduces the array according to fit limits. Depending on fit function, sets correct fitting parameters and calculates fit.'''
+        Description: reduces the array according to fit limits. Depending on fit function, sets correct fitting parameters and calculates fit with curve_fit.'''
         T, R = Tools.select_values(self.T, self.R, fit_low_lim, fit_upp_lim)
         if T.size == 0:
             raise ValueError('chosen fit limits result in empty array. please change fit limits')
@@ -434,53 +435,55 @@ class RTfit():
         return self.fit_param['output']
 
     def __define_fitting_parameters_richards(self, R_NC=None, **kwargs):
-        '''Input: normal conducting resistance
+        '''Input: normal conducting resistance, optionally fitting parameters
         Output: sets starting values of fit parameters (attribute)
-        Description: '''
-        R_NC = Tools.select_property(R_NC, np.max(self.R))
+        Description: defines the start values if the richards function is selected. if several fits are performed, the resulting fit parameters_RTfit
+        from the fit before are used as starting values'''
+        R_NC = Tools.selector(R_NC, np.max(self.R))
         a,c,q = (0,1,1)
-        if self.fit_param['output'] == {} and kwargs == {}: #and all(abs(start_values_fit_param[list(start_values_fit_param.keys())[1:3]]) < 15)
+        if self.fit_param['output'] == {} and kwargs == {}:  # use calculated starting values if no fit has been already performed
             k = R_NC  # upper asymptote
             nu = 1  # affects near which asymptote maximum growth occurs (nu is always > 0)
             m = a + (k-a)/np.float_power((c+1),(1/nu))  # shift on x-axis
             # TODO: take into account to change b from outside!
-            t_2 = self.T[bisect_left(self.R, R_NC/2)]
+            t_2 = self.T[bisect_left(self.R, R_NC/2)]  # temperature whre resistance reaches half its normal conducting value
             b = 1/(m-t_2) * ( np.log( np.float_power((2*(k-a)/k),nu)-c )+np.log(q) ) # growth rate
             self.fit_param['start_values'] = {'b': b, 'm': m, 'nu': nu, 'k': k}
-        elif kwargs != {}:
-            print('I am setting the parameters!')
+        elif kwargs != {}:  # use parameters set by user
             self.fit_param['output'] = {}
-            self.__define_fitting_parameters_richards()
-            print(self.fit_param['start_values'])
+            self.__define_fitting_parameters_richards()  # call function again to ensure missing all fitting parameters are existing
             for key, value in kwargs.items():
-                self.fit_param['start_values'][key] = value
-            print(self.fit_param['start_values'])
+                if key in ['b', 'm', 'nu', 'k']:
+                    self.fit_param['start_values'][key] = value  # overwrite values of keys handed over to the function in kwargs
             self.__set_fit_parameters = {}
         else:
             self.fit_param['start_values'] = self.fit_param['output']
         self.curve_fit_options = {'maxfev': 2500, 'bounds': ([-np.inf, -np.inf, -np.inf, 0.8*R_NC], [np.inf, np.inf, np.inf, 1.2*R_NC])}
 
     def __define_fitting_parameters_gauss_cdf(self, R_NC=None, **kwargs):
-        R_NC = Tools.select_property(R_NC, np.max(self.R))
-        if bisect_left(self.R, R_NC/2) < len(self.R):
-            mean = self.T[bisect_left(self.R, R_NC/2)]
+        '''Input: normal conducting resistance, optionally fitting parameters
+        Output: sets starting values of fit parameters (attribute)
+        Description: defines the start values if the gaussian cdf function is selected. calculates the starting values with every new self.R, self.T handed over to the class'''
+        R_NC = Tools.selector(R_NC, np.max(self.R))
+        if bisect_left(self.R, R_NC/2) < len(self.R):  # perform check whether the searched index for the temperature of the halfpoint value is realistic
+            mean = self.T[bisect_left(self.R, R_NC/2)]  # is below the maximal length, otherwise the array is sorted the other way round and bisect left gives unrealistic indices
             sigma = self.T[bisect_left(self.R, 0.9*R_NC)]-self.T[bisect_left(self.R, 0.1*R_NC)]
         else:
-            R_rev = self.R[::-1]
+            R_rev = self.R[::-1]  # turn around the array and search again for the temperature value at the halfpoint resistance, as check above was negative
             mean = self.T[bisect_left(R_rev, R_NC/2)]
             sigma = self.T[bisect_left(R_rev, 0.9*R_NC)]-self.T[bisect_left(R_rev, 0.1*R_NC)]
-        if sigma < 0.01:
+        if sigma < 0.01:  # ensure sigma has a good starting value
             sigma = 0.1
         self.fit_param['start_values'] = {'scaling': R_NC, 'mean': mean, 'sigma': sigma}
-        if kwargs != {}:
-            print(self.fit_param['start_values'])
-            for key, value in kwargs:
-                self.fit_param['start_values'][key] = value
+        if kwargs != {}:  # if fit starting values are handed over by the user, use them!
+            self.__define_fitting_parameters_gauss_cdf()  # ensure there are the necessary values
+            for key, value in kwargs.items():  # overwrite starting values handed over by the user
+                if key in ['scaling', 'mean', 'sigma']:
+                    self.fit_param['start_values'][key] = value
             self.__set_fit_parameters = {}
-            print(self.fit_param['start_values'])
         self.curve_fit_options = {'maxfev': 1600, 'bounds': (-inf, inf)}
 
-    def set_fit_parameters(self, **kwargs):
+    def set_fit_parameters(self, **kwargs):  # sets the fit parameters as method for comfortness
         self.__set_fit_parameters = kwargs
 
     def richards(self, t,b,m,nu,k, a=0, c=1, q=1):
@@ -490,18 +493,24 @@ class RTfit():
         return scaling*norm.cdf(x, mean, sigma)
 
     def return_RTfit(self, eval_array = None, return_eval_array = False, fit_param=None):
-        fit_param = Tools.select_property(fit_param, self.fit_param['output'])
-        if eval_array is None:
+        '''Input: T array to be evaluated, flag if eval_array should be returned, which fit parameters to use
+        Output: R array or tuple (T,R) of fitted values with the given parameters
+        Description: takes or sets an evaluation array and evaluates them in the given function with the passed fitting parameters'''
+        fit_param = Tools.selector(fit_param, self.fit_param['output'])
+        if eval_array is None:  # set evaluation array limits as the limits of the measured self.T array
             x_low_lim = np.min(self.T)
             x_upp_lim = np.max(self.T)
             eval_array = np.arange(x_low_lim, x_upp_lim, self.fit_function_T_default_spacing)
-        if return_eval_array:
+        if return_eval_array:  # eval array should be returned
             return (eval_array, self.fit_function(eval_array, **fit_param))
-        elif not return_eval_array:
+        else:
             return self.fit_function(eval_array, **fit_param)
 
     def Tc(self, fit_param = None):
-        fit_param = Tools.select_property(fit_param, self.fit_param['output'])
+        '''Input: fit parameters to use for determining the according Tc value of the RT-sweep
+        Output: tuple (Tc, Tc_err_low, Tc_up_err): it is the transition temperature of an RT sweep
+        Description: depending on the fit function, calls corresponding private method and returns Tc with the error'''
+        fit_param = Tools.selector(fit_param, self.fit_param['output'])
         if self.fit_function_type is 'richards':
             Tc = self.__get_Tc_richards(fit_param)
             return (Tc, *self.__Tc_error(Tc))
@@ -510,23 +519,27 @@ class RTfit():
             return (Tc, *self.__Tc_error(Tc))
         else: raise ValueError('only "richards" and "gauss_cdf" as possible fitting functions')
 
-    def __get_Tc_gauss_cdf(self, param):
+    def __get_Tc_gauss_cdf(self, param):  # the Tc of the gaussian fit is described by the expected mean mu, since this always describes the halfpoint of a gaussian cdf
         if 'mean' in param.keys():
             return param['mean']
         else: raise ValueError('no gaussian parameters found')
 
-    def __get_Tc_richards(self, param):
+    def __get_Tc_richards(self, param):  # the halfpoint value of the richards function is analytically calculated and is then returned
         if {'b', 'm', 'nu', 'k'}.issubset(list(param.keys())):
             a,c,q = (1,1,1)
             b, m, nu, k = param.values()
-            return m - 1/b*( np.log(np.float_power(2*(k-a)/k,nu)-c) + np.log(q) )
+            return m - 1/b*( np.log(np.float_power(2*(k-a)/k,nu)-c) + np.log(q) )  # analytical calculation of the halfpoint
         else:
             raise ValueError('no richards parameters found')
 
     def __Tc_error(self, Tc):
+        '''Input: calculated Tc
+        Output: Tuple (Tc_err_low, Tc_err_up)
+        Description: Tc error is defined as the interval between two measured data points in which the calculated value lies, with lower and upper error respectively.
+        Additionally, measurement errors are considerated'''
         T_data_from_below = self.T[bisect_left(self.T, Tc) - 1]
         T_data_from_above = self.T[bisect_left(self.T, Tc)]
-        T_err_low = abs(Tc - T_data_from_below - self.T_meas_error_pc * T_data_from_below - self.T_meas_error_std_dev)
+        T_err_low = abs(Tc - T_data_from_below - self.T_meas_error_pc * T_data_from_below - self.T_meas_error_std_dev) # consideration of measurement errors
         T_err_up = abs(T_data_from_above + self.T_meas_error_pc * T_data_from_above + self.T_meas_error_std_dev - Tc)
         return (T_err_low, T_err_up)
 
@@ -534,19 +547,18 @@ class RTfit():
 class Tools():
 
     @staticmethod
-    def select_property(val, *args):
-        if val is None:
+    def selector(val, *args): # function selecting out of the passed args according to the control structure. outsourced since it was used a lot
+        if val is None:       # to hand over properties, as they cannot be set as default values in the parameter definition
             return args[0]
         elif val is 'all':
             return args[1]
         else: return val
 
     @staticmethod
-    def select_values(X, Y, fit_low_lim, fit_upp_lim):
-        XY_data = np.array([X, Y]).transpose()
-        XY_data = XY_data[XY_data[:,0].argsort()]
-        #TODO: check for a better condition where only one line is used
-        XY_data = XY_data[XY_data[:,0] >= fit_low_lim, :]
-        XY_data = XY_data[XY_data[:,0] <= fit_upp_lim, :]
-        T_array, Bc2_array = (XY_data[:,0], XY_data[:,1])
+    def select_values(X, Y, fit_low_lim, fit_upp_lim):  # function reducing an x-Y relation in X dimension according to fit limits. Needed to reduce the fit area of RT sweeps and Bc2vsT relation
+        XY_data = np.array([X, Y]).transpose()  # build a matrix and transpose it to have X,Y pairs
+        XY_data = XY_data[XY_data[:,0].argsort()]  # sort the matrix in X dimension
+        XY_data = XY_data[XY_data[:,0] >= fit_low_lim, :]  # check for lower limit
+        XY_data = XY_data[XY_data[:,0] <= fit_upp_lim, :]  # check for upper limit
+        T_array, Bc2_array = (XY_data[:,0], XY_data[:,1])  # create tuple of (X,Y)
         return (T_array, Bc2_array)
