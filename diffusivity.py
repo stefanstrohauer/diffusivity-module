@@ -38,23 +38,29 @@ class DiffusivityMeasurement:
         self.Bc2vsT_fit = None
 
     def __import_file(self, key_with_data=None):
-        ## TODO: select directly whether data or data_old if none, otherwise take
         """Input: data key with measurement data, filename (from properties)
         Output: structured measurement data
         Description: reads string with filename and returns measurement data from json and .mat files. Also, reads into the
         corresponding attributes the measurement data. Differentiates between json and mat file through setting the key_with_data parameter"""
-        if key_with_data is None:
-            if set('.json').issubset(set(self.filename)):
-                with open(self.filename) as json_data:
-                    data = js.load(json_data)
-                    self.time_sweeps, self.T_sample_sweeps, self.T_PCB_sweeps, self.T_sample_ohms_sw, self.T_PCB_ohms_sw, self.B_sweeps, self.R_sweeps = \
-                        self.__return_measurement_data(data['sweep'], 't', 'T_sample', 'T_PCB', 'T_sample_ohms', 'T_PCB_ohms', 'B', 'R')
-            else: raise Exception('wrong data type: Please check if correct parameters were passed')
-        else:
-            data = io.loadmat(self.filename, squeeze_me=True)[self.key_w_data]
-            self.time_sweeps, self.B_sweeps, self.R_sweeps = self.__return_measurement_data(data, 8, 9, 10)
-            self.T_sample_sweeps = self.__time_temperature_mapping(data)
-        return data
+        if set('.json').issubset(set(self.filename)):
+            with open(self.filename) as json_data:
+                data_raw = js.load(json_data)
+                self.time_sweeps, self.T_sample_sweeps, self.T_PCB_sweeps, self.T_sample_ohms_sw, self.T_PCB_ohms_sw, self.B_sweeps, self.R_sweeps = \
+                    self.__return_measurement_data(data_raw['sweep'], 't', 'T_sample', 'T_PCB', 'T_sample_ohms', 'T_PCB_ohms', 'B', 'R')
+        elif set('.mat').issubset(set(self.filename)):
+            data = io.loadmat(self.filename, squeeze_me=True)
+            if key_with_data in list(data.keys()):  # this try except structure tries to look up the data through the given dict key and, if it is None or not valid (none is not valid), tries the dict keys we usually used in the past measurements.
+                data_raw = data[key_with_data]
+            elif ('data' in data.keys()) or ('data_old' in data.keys()):
+                key_list = list(data.keys())
+                self.key_w_data = list(filter(lambda x:'data' in x, key_list))[0] # filters from the keys in the data dictionary if it is data or data_old
+                data_raw = data[self.key_w_data]
+            else:
+                raise Exception('Unknown measurement. Data was not found in .mat structure')
+            self.time_sweeps, self.B_sweeps, self.R_sweeps = self.__return_measurement_data(data_raw, 8, 9, 10)
+            self.T_sample_sweeps = self.__time_temperature_mapping(data_raw)
+        else: raise Exception('wrong data type: Please check if correct parameters were passed')
+        return data_raw
 
     def __return_measurement_data(self, data, *args):
         """Input: raw measurement data, indices/keys of measurment quantities dict in raw data
@@ -69,6 +75,7 @@ class DiffusivityMeasurement:
         """Input: T-sweeps, B-sweeps, R-sweeps
         Output: dictionary {B-field: {T,R}}
         Description: rearranges the raw data saved in B-sweeps into RT-sweeps"""
+        # TODO: Do not do hard coded the TBR dict!!
         TBR_dict = {'T': self.__flatten_list(self.T_sample_sweeps),
                     'B': self.__flatten_list(self.B_sweeps),
                     'R': self.__flatten_list(self.R_sweeps)}
@@ -276,7 +283,7 @@ class DiffusivityMeasurement:
 
     def set_temperature_array(self,T):
         '''Input: T array
-        Output: Evaluated T array
+        Output: Adapted T array
         Description: Sets T array correctly according to specifications: if None: maximal T range of measurement, else return T. Also, this method sets
         if T array should be returned as well in fit_function'''
         request_eval_array = False
@@ -287,7 +294,7 @@ class DiffusivityMeasurement:
                     T_min = np.min(value['T'])
                 if np.max(value['T']) > T_max:
                     T_max = np.max(value['T'])
-            T_array = np.arange(T_min, T_max, self.RTfit.fit_function_T_default_spacing)
+            T_array = np.linspace(T_min, T_max, num=self.RTfit.fit_function_number_of_datapoints)
             request_eval_array = True
         elif isinstance(T, (list, np.ndarray)):
             T_array = T
@@ -331,8 +338,7 @@ class DiffusivityMeasurement:
 
             self.B_field_meas_error_pc = 0.02 # variation of 2% in voltage monitor results in variation of 1% in Bfield
             self.B_field_meas_error_round = 0.001 # tbreviewed, in Tesla, measurement error + rounding error
-            self.linear_fit_T_default_spacing = 0.05
-            # # TODO: implement linspace instead of np.arange for this
+            self.linear_fit_number_of_datapoints = 100
 
             self.set_properties(data)  # read data into attributes
             self.low_lim = Tools.selector(fit_low_lim, np.sort(self.Bc2vsT['T'])[1])  # determine lower fit limit, if None the minimum of T is taken
@@ -349,7 +355,7 @@ class DiffusivityMeasurement:
             T_min_def = np.min(self.Bc2vsT['T'])
             T_max_def = np.max(self.Bc2vsT['T'])
             if T is None:
-                T = Tools.selector(T, np.arange(T_min_def, T_max_def, self.linear_fit_T_default_spacing))
+                T = Tools.selector(T, np.linspace(T_min_def, T_max_def, num=self.linear_fit_number_of_datapoints))
                 return (T, self.__dBc2dT*T + self.__B_0)
             elif isinstance(T, (list, np.ndarray)):
                 return self.__dBc2dT*T + self.__B_0
@@ -383,8 +389,7 @@ class RTfit():
     def __init__(self, fit_function_type = "richards"):
         self.fit_function_type = fit_function_type
         self.fit_function = self.richards
-        self.fit_function_T_default_spacing = 0.1
-        # # TODO: linspace instead of arange, change to number of data points
+        self.fit_function_number_of_datapoints = 1000
         self.T = 0
         self.R = 0
         self.fit_param = {'output':{}, 'start_values':{}}  # output are always the resulting fit parameters after fitting, start_values represent
@@ -445,7 +450,6 @@ class RTfit():
             k = R_NC  # upper asymptote
             nu = 1  # affects near which asymptote maximum growth occurs (nu is always > 0)
             m = a + (k-a)/np.float_power((c+1),(1/nu))  # shift on x-axis
-            # TODO: take into account to change b from outside!
             t_2 = self.T[bisect_left(self.R, R_NC/2)]  # temperature whre resistance reaches half its normal conducting value
             b = 1/(m-t_2) * ( np.log( np.float_power((2*(k-a)/k),nu)-c )+np.log(q) ) # growth rate
             self.fit_param['start_values'] = {'b': b, 'm': m, 'nu': nu, 'k': k}
@@ -500,7 +504,7 @@ class RTfit():
         if eval_array is None:  # set evaluation array limits as the limits of the measured self.T array
             x_low_lim = np.min(self.T)
             x_upp_lim = np.max(self.T)
-            eval_array = np.arange(x_low_lim, x_upp_lim, self.fit_function_T_default_spacing)
+            eval_array = np.linspace(x_low_lim, x_upp_lim, self.fit_function_number_of_datapoints)
         if return_eval_array:  # eval array should be returned
             return (eval_array, self.fit_function(eval_array, **fit_param))
         else:
