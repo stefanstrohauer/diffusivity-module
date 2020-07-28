@@ -6,7 +6,7 @@ class DiffusivityMeasurement:
     Description: This class contains all properties concerning the preparation of the measurement data. Also,
     its methods control the workflow to determine the electron diffusivity.'''
 
-    def __init__(self, filename, key_w_data=None, fit_function='richards'): # to see why it is cleaner to create new object
+    def __init__(self, filename, key_w_data=None, fit_function='richards', T_sweeps=None): # to see why it is cleaner to create new object
                                   # https://stackoverflow.com/questions/29947810/reusing-instances-of-objects-vs-creating-new-ones-with-every-update
         self.filename = filename
         self.key_w_data = key_w_data  # for old measurement schemes: data, data_old
@@ -32,7 +32,7 @@ class DiffusivityMeasurement:
         self.B_bin_size = 0.01 #
         self.sheet_resistance_geom_factor = 4.53 # geometry factor to determine sheet resistance 4.53=pi/ln(2)
                                                  # calculated sheet resistance of the film
-        self.__rearrange_B_sweeps()
+        self.__rearrange_B_sweeps(T_sweeps)
         self.sheet_resistance = self.get_sheet_resistance()
         self.RTfit = RTfit(fit_function)
         self.Bc2vsT_fit = None
@@ -71,12 +71,13 @@ class DiffusivityMeasurement:
             data_to_properties.append([i[arg] for i in data])
         return data_to_properties
 
-    def __rearrange_B_sweeps(self):
+    def __rearrange_B_sweeps(self, T_values = None):
         """Input: T-sweeps, B-sweeps, R-sweeps
         Output: dictionary {B-field: {T,R}}
         Description: rearranges the raw data saved in B-sweeps into RT-sweeps"""
         # TODO: Do not do hard coded the TBR dict!!
-        TBR_dict = {'T': self.__flatten_list(self.T_sample_sweeps),
+        T_sweeps = Tools.selector(T_values, self.T_sample_sweeps)
+        TBR_dict = {'T': self.__flatten_list(T_sweeps),
                     'B': self.__flatten_list(self.B_sweeps),
                     'R': self.__flatten_list(self.R_sweeps)}
         TBR_dict['B'] = self.__round_to_decimal(TBR_dict['B'], base=self.B_bin_size)
