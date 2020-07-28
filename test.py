@@ -1,4 +1,31 @@
-from diffusivity import *
+from PyQt5.QtWidgets import QFileDialog
+import json as js
+import numpy as np
+import pandas as pd
+from pathlib import Path, PureWindowsPath
+from scipy import io
+from scipy.ndimage import gaussian_filter
+from scipy.optimize import curve_fit
+from scipy.stats import norm
+from scipy.special import erf
+from scipy.constants import elementary_charge, Boltzmann
+from math import pi
+from math import *
+import matplotlib as mpl
+from scipy.stats import linregress
+import matplotlib.pyplot as plt
+import matplotlib.patches as pat
+import matplotlib.cm as cm
+import matplotlib.mlab as mlab
+from matplotlib import gridspec
+from matplotlib.backends.backend_pdf import PdfPages
+
+import os
+import timeit
+from bisect import bisect_left, bisect_right
+import re
+import itertools
+
 
 #T2=DiffusivityMeasurement('./testing_meas/200212_200109A_diffusweep.mat')
 #T2=DiffusivityMeasurement('./testing_meas/200212_200109A_diffusweep.mat', 'data')
@@ -11,6 +38,31 @@ T2.RTfit.fit_function_type = 'richards'
 
 T2.RTfit.set_fit_parameters(b=0.4)
 print(T2.fit_function_parameters(B=0.1))
+
+
+
+class Observable:
+    def __init__(self):
+        self._observers = []
+
+    def register_observer(self, observer):
+        self._observers.append(observer)
+
+    def notify_observers(self, *args, **kwargs):
+        for observer in self._observers:
+            observer.notify(self, *args, **kwargs)
+
+class Observer:
+    def __init__(self, observable):
+        observable.register_observer(self)
+
+    def notify(self, observable, *args, **kwargs):
+        print('Got', args, kwargs, 'From', observable)
+
+
+subject = Observable()
+observer = Observer(subject)
+subject.notify_observers('test')
 
 
 # T2.fit_function_parameters(B=[1,2])

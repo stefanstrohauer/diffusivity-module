@@ -10,6 +10,8 @@ class DiffusivityMeasurement:
                                   # https://stackoverflow.com/questions/29947810/reusing-instances-of-objects-vs-creating-new-ones-with-every-update
         self.filename = filename
         self.key_w_data = key_w_data  # for old measurement schemes: data, data_old
+
+        # here measurement data is stored in a structured manner
         self.time_sweeps = []
         self.T_sample_sweeps = []
         self.T_PCB_sweeps = []
@@ -19,11 +21,11 @@ class DiffusivityMeasurement:
         self.R_sweeps = []
         self._raw_data = self.__import_file(key_w_data)
 
-        self.__RT_sweeps_per_B = {}
-        self.parameters_RTfit = {}
-        self.fitted_RTvalues = {}
-        self.__RT_fit_low_lim = 0
-        self.__RT_fit_upp_lim = np.inf
+        self.__RT_sweeps_per_B = {}  # sorting temperature and resistance after magnetic field (B: {T,R})
+        self.parameters_RTfit = {}  # dictionary of B fields with corresponding fit parameters from fitting {T,R}   {B:{fit parameters}}
+        self.fitted_RTvalues = {}  # fitted values of Resistance R for given Temperature T at magnetic fields B
+        self.__RT_fit_low_lim = 0  # lower limit of RT fits
+        self.__RT_fit_upp_lim = np.inf  # upper limit of RT fits
 
         self.diffusivity = 0
         self.diffusivity_err = 0
@@ -34,7 +36,7 @@ class DiffusivityMeasurement:
                                                  # calculated sheet resistance of the film
         self.__rearrange_B_sweeps(T_sweeps)
         self.sheet_resistance = self.get_sheet_resistance()
-        self.RTfit = RTfit(fit_function)
+        self.RTfit = RTfit(fit_function)  # initializing RT fit class
         self.Bc2vsT_fit = None
 
     def __import_file(self, key_with_data=None):
@@ -75,7 +77,6 @@ class DiffusivityMeasurement:
         """Input: T-sweeps, B-sweeps, R-sweeps
         Output: dictionary {B-field: {T,R}}
         Description: rearranges the raw data saved in B-sweeps into RT-sweeps"""
-        # TODO: Do not do hard coded the TBR dict!!
         T_sweeps = Tools.selector(T_values, self.T_sample_sweeps)
         TBR_dict = {'T': self.__flatten_list(T_sweeps),
                     'B': self.__flatten_list(self.B_sweeps),
@@ -102,7 +103,7 @@ class DiffusivityMeasurement:
       prec = str(base)[::-1].find('.')
       return np.round(base * np.round(x/base), prec)
 
-    def __time_temperature_mapping(self, data): # TODO: what do we do with this function, maybe change the whole data structure a bit
+    def __time_temperature_mapping(self, data):
         '''Input: temperature data
         Output: interpolated temperature data with same length as R and B-sweeps
         Description: For measurements without Cernox. As temperature is measured between B-sweeps, the time array is used
@@ -147,7 +148,6 @@ class DiffusivityMeasurement:
         Output: sheet resistance
         Description: Calculated sheet resistance out of the maximal measured resistance (usually close to 15K). If value is not sensible,
         every sweep is searched for its maximum until one is found with R_meas_max < upp_lim'''
-        # TODO: check for correctness of formulas!! and regardgin compatibility to new files -> __flatten_list
         max_R_NC = np.max(self.__flatten_list(self.R_sweeps))
         if max_R_NC < upp_lim:
             sheet_resistance = self.sheet_resistance_geom_factor * max_R_NC
@@ -194,8 +194,6 @@ class DiffusivityMeasurement:
         self.Bc2vsT_fit.calc_Bc2_T_fit()  # calculating diffusivity and values
         self.diffusivity, _, _, self.diffusivity_err, _, _ = self.Bc2vsT_fit.get_fit_properties()  # setting properties
         self.Tc_0T = self.Bc2vsT_fit.Tc  # handig over Tc (calculated in Bc2vsTfit)
-
-    def get_Dfit_properties(self):  # Returns the values calculated in self.Bc2vsT_fit.calc_Bc2_T_fit()
         return self.Bc2vsT_fit.get_fit_properties()
 
     def get_Bc2vsT_fit(self, T=None):
@@ -334,12 +332,12 @@ class DiffusivityMeasurement:
             self.__err_D = 0
             self.__err_dBc2dT = 0
             self.__r_squared = 0
-            self.Bc2vsT = {}
+            self.Bc2vsT = {}  # here the (T,Bc2) data points determined from the measurement and fitting are stored
             self.Tc = 0
 
             self.B_field_meas_error_pc = 0.02 # variation of 2% in voltage monitor results in variation of 1% in Bfield
             self.B_field_meas_error_round = 0.001 # tbreviewed, in Tesla, measurement error + rounding error
-            self.linear_fit_number_of_datapoints = 100
+            self.linear_fit_number_of_datapoints = 100  # amount of data points to be placed between lower and upper T values for the linear fit
 
             self.set_properties(data)  # read data into attributes
             self.low_lim = Tools.selector(fit_low_lim, np.sort(self.Bc2vsT['T'])[1])  # determine lower fit limit, if None the minimum of T is taken
@@ -390,7 +388,7 @@ class RTfit():
     def __init__(self, fit_function_type = "richards"):
         self.fit_function_type = fit_function_type
         self.fit_function = self.richards
-        self.fit_function_number_of_datapoints = 1000
+        self.fit_function_number_of_datapoints = 1000  # amount of data points to be placed between lower and upper T values for richards/gauss_cdf fit
         self.T = 0
         self.R = 0
         self.fit_param = {'output':{}, 'start_values':{}}  # output are always the resulting fit parameters after fitting, start_values represent
@@ -409,18 +407,19 @@ class RTfit():
         Description: based on the type of data, the method is able to read out the data in several formats including:
         dict: {'T':x, 'R':y} ; tuple: (T,R)
         numpy.array: [[x,y], [x,y]] or [[xxx], [yyy]]'''
-    # TODO: look if it is necessary to check whether data has something in it!
-        if type(data) is dict:
-            self.T, self.R = (np.asarray(data['T']), np.asarray(data['R']))
-        elif type(data) is np.ndarray:
-            shape = np.shape(data)
-            if shape[0] is 2:
-                self.T, self.R = (np.asarray(data[0,:]), np.asarray(data[1,:]))
-            elif shape[1] is 2:
-                self.T, self.R = (np.asarray(data[:,0]), np.asarray(data[:,1]))
-            else: raise ValueError('array has the shape ' + str(shape))
-        elif type(data) is tuple:
-            self.T, self.R = data
+        try:
+            if type(data) is dict:
+                self.T, self.R = (np.asarray(data['T']), np.asarray(data['R']))
+            elif type(data) is np.ndarray:
+                shape = np.shape(data)
+                if shape[0] is 2:
+                    self.T, self.R = (np.asarray(data[0,:]), np.asarray(data[1,:]))
+                elif shape[1] is 2:
+                    self.T, self.R = (np.asarray(data[:,0]), np.asarray(data[:,1]))
+                else: raise ValueError('array has the shape ' + str(shape))
+            elif type(data) is tuple:
+                self.T, self.R = data
+        except: raise Exception('data has not the correct format or is empty. please check passed data')
 
     def fit_data(self, fit_low_lim=None, fit_upp_lim=None, R_NC=None):
         '''Input: fit limits
