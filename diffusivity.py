@@ -1,4 +1,5 @@
 from import_lib import *
+#import json as js
 
 class DiffusivityMeasurement:
     '''Input: filename with raw data, (fit function type)
@@ -6,9 +7,9 @@ class DiffusivityMeasurement:
     Description: This class contains all properties concerning the preparation of the measurement data. Also,
     its methods control the workflow to determine the electron diffusivity.'''
 
-    def __init__(self, filename, key_w_data=None, fit_function='richards', T_sweeps=None): # to see why it is cleaner to create new object
+    def __init__(self, filename, key_w_data=None, fit_function='richards', T_sweeps=None, T_selector = "T_sample"): # to see why it is cleaner to create new object
                                   # https://stackoverflow.com/questions/29947810/reusing-instances-of-objects-vs-creating-new-ones-with-every-update
-        self.filename = filename
+        self.filename = str(filename)
         self.key_w_data = key_w_data  # for old measurement schemes: data, data_old
 
         # here measurement data is stored in a structured manner
@@ -30,6 +31,7 @@ class DiffusivityMeasurement:
         self.diffusivity = 0
         self.diffusivity_err = 0
         self.Tc_0T = 0
+        self.T_selector = T_selector # options: T_sample or T_PCB
         self.default_B_array = np.array([0.0, 0.2, 0.4, 0.6, 0.8, 1.0])
         self.B_bin_size = 0.01 #
         self.sheet_resistance_geom_factor = 4.53 # geometry factor to determine sheet resistance 4.53=pi/ln(2)
@@ -77,7 +79,15 @@ class DiffusivityMeasurement:
         """Input: T-sweeps, B-sweeps, R-sweeps
         Output: dictionary {B-field: {T,R}}
         Description: rearranges the raw data saved in B-sweeps into RT-sweeps"""
-        T_sweeps = Tools.selector(T_values, self.T_sample_sweeps)
+        if self.T_selector == "T_sample":
+            T_sweeps = Tools.selector(T_values, self.T_sample_sweeps)
+        elif self.T_selector == "T_PCB":
+            T_sweeps = Tools.selector(T_values, self.T_PCB_sweeps)
+        elif T_values != None:
+            T_sweeps = T_values
+        else:
+            raise ValueError('Only T_sample and T_PCB are valid options for T_selector.')
+
         TBR_dict = {'T': self.__flatten_list(T_sweeps),
                     'B': self.__flatten_list(self.B_sweeps),
                     'R': self.__flatten_list(self.R_sweeps)}
@@ -108,11 +118,15 @@ class DiffusivityMeasurement:
         Output: interpolated temperature data with same length as R and B-sweeps
         Description: For measurements without Cernox. As temperature is measured between B-sweeps, the time array is used
         to interpolate the temperature (temperature is assumed to rise almost linearly).'''
+        # the old data structure is: data =
+        # prev_temp_diode, curr_temp_diode, prev_temp_sample, curr_temp_sample,
+        # prev_volt_diode, curr_volt_diode, prev_volt_sample, curr_volt_sample,
+        # curr_time, curr_mag_field, curr_resistance
         Temp_at_timestamp = [i[0:4] for i in data]
         T_array = []
         for i,j in zip(self.time_sweeps, Temp_at_timestamp):
             t = [i[0], i[-1]]  # locations of the time and temperature data
-            T = [j[2], j[3]]
+            T = [j[2], j[3]] # indices 2, 3 yield temperature of the sample diode
             p = np.polyfit(t,T,1)
             T_array.append(np.polyval(p,i))
         return T_array
@@ -387,7 +401,13 @@ class RTfit():
 
     def __init__(self, fit_function_type = "richards"):
         self.fit_function_type = fit_function_type
-        self.fit_function = self.richards
+        # self.fit_function = self.richards # BUG? This line should be removed and the following 6 lines be there instead, right?
+        if self.fit_function_type == "richards":
+            self.fit_function = self.richards
+        elif self.fit_function_type == "gauss_cdf":
+            self.fit_function = self.gauss_cdf
+        else:
+            raise ValueError('only "richards" and "gauss_cdf" as possible fitting functions')
         self.fit_function_number_of_datapoints = 1000  # amount of data points to be placed between lower and upper T values for richards/gauss_cdf fit
         self.T = 0
         self.R = 0
