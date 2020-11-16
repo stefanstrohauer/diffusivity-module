@@ -1,0 +1,3 @@
+- fitting of D data just up to a certain B field
+- always put out not only a pdf but also the data to reproduce that fit in csv form that could be imported into origin 
+- implement object such that one can set parameters instead of always create new object. by this make also possible to set a parameter do1.temperature_selector = "T_PCB" instead of always just directly  at creation of object.

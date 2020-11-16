@@ -1,3 +1,9 @@
+####################################
+# Module for evaluation of diffusivity measurements
+# Authors: Stefan Strohauer, Noah Ploch
+# 2019 - 2020
+####################################
+
 from import_lib import *
 #import json as js
 
