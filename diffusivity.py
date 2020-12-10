@@ -4,6 +4,10 @@
 # 2019 - 2020
 ####################################
 
+## R_NC muss noch in
+# maybe check meaningfulness of error calculation of T_Bc2
+# check for "is false"
+
 from import_lib import *
 #import json as js
 
@@ -43,7 +47,9 @@ class DiffusivityMeasurement:
         self.sheet_resistance_geom_factor = 4.53 # geometry factor to determine sheet resistance 4.53=pi/ln(2)
                                                  # calculated sheet resistance of the film
         self.__rearrange_B_sweeps(T_sweeps)
-        self.sheet_resistance = self.get_sheet_resistance()
+        self.max_measured_resistance = self.get_R_NC()
+        self.sheet_resistance = self.sheet_resistance_geom_factor*self.max_measured_resistance
+
         self.RTfit = RTfit(fit_function)  # initializing RT fit class
         self.Bc2vsT_fit = None
 
@@ -89,8 +95,8 @@ class DiffusivityMeasurement:
             T_sweeps = Tools.selector(T_values, self.T_sample_sweeps)
         elif self.T_selector == "T_PCB":
             T_sweeps = Tools.selector(T_values, self.T_PCB_sweeps)
-        elif T_values != None:
-            T_sweeps = T_values
+        elif T_values != None:  # maybe these 2 lines can be deleted as this
+            T_sweeps = T_values # case is already coverd above with Tools.selector
         else:
             raise ValueError('Only T_sample and T_PCB are valid options for T_selector.')
 
@@ -163,22 +169,20 @@ class DiffusivityMeasurement:
     def __RT_dict_builder(self, B, selector, error_pc=1, error_std=0):  # Method returning either R(R_err)/T(T_err) arrays in form of dicts (B as key)
         return {key:value[selector] * error_pc + error_std for key, value in self.__RT_sweeps_per_B.items() if key in B}
 
-    def get_sheet_resistance(self, upp_lim=450):
+    def get_R_NC(self, upp_lim=np.Inf):
         '''Input: upper limit for measured resistance
-        Output: sheet resistance
-        Description: Calculated sheet resistance out of the maximal measured resistance (usually close to 15K). If value is not sensible,
+        Output: maximum measured resistance (of all sweeps) within limits
+        Description: Determine maximum measured resistance (usually close to 15K). If value is not reasonable,
         every sweep is searched for its maximum until one is found with R_meas_max < upp_lim'''
-        max_R_NC = np.max(self.__flatten_list(self.R_sweeps))
-        if max_R_NC < upp_lim:
-            sheet_resistance = self.sheet_resistance_geom_factor * max_R_NC
-        else:
-            max_R_NC = 0
-            for value in self.__RT_sweeps_per_B.values():
-                curr_R = np.max(value['R'])
-                if curr_R > max_R_NC and curr_R <= upp_lim:
-                     max_R_NC = curr_R
-            sheet_resistance = self.sheet_resistance_geom_factor * max_R_NC
-        return sheet_resistance
+        max_R_NC = 0
+        for value in self.__RT_sweeps_per_B.values():
+            curr_R = np.max(value['R'])
+            if curr_R > max_R_NC and curr_R <= upp_lim:
+                 max_R_NC = curr_R
+
+        self.max_measured_resistance = max_R_NC
+        self.sheet_resistance = max_R_NC*self.sheet_resistance_geom_factor
+        return max_R_NC
 
     def R_vs_B(self, B_sweep_index, err=False):
         '''Input: index of the searched B sweep in the data
@@ -208,7 +212,7 @@ class DiffusivityMeasurement:
         '''Input: fit limits of the Bc2(T)
         Output: Diffusivity and related values are set in the properties
         Description: First all B fields (keys) are selected. Then the Bc2vsTfit class is initialized and the diffusivity and related
-        values calculated and the respecting properties set'''
+        values calculated and the respective properties set'''
         B = np.array(list(self.__RT_sweeps_per_B.keys()))
         self.Bc2vsT_fit = self.Bc2vsTfit((*self.get_Tc(B='all', err=True), B), fit_low_lim, fit_upp_lim)  # initiaizing class
         self.Bc2vsT_fit.calc_Bc2_T_fit()  # calculating diffusivity and values
@@ -227,17 +231,18 @@ class DiffusivityMeasurement:
         B = Tools.selector(B, self.default_B_array, np.array(list(self.__RT_sweeps_per_B.keys())))
         B = self.__round_to_decimal(np.array(B), base=self.B_bin_size)
         self.__checkif_B_in_param(B)
+        R_NC = self.max_measured_resistance
         if isinstance(B, (int,float)):
             if err is False:
-                return self.RTfit.Tc(fit_param=self.parameters_RTfit[B])[0]
+                return self.RTfit.Tc(fit_param=self.parameters_RTfit[B], R_NC=R_NC)[0]
             else:
-                return self.RTfit.Tc(fit_param=self.parameters_RTfit[B])
+                return self.RTfit.Tc(fit_param=self.parameters_RTfit[B], R_NC=R_NC)
         else:
             Tc, Tc_err_low, Tc_err_up = (np.array([]), np.array([]), np.array([]))
             for key in B:
-                Tc= np.append(Tc, self.RTfit.Tc(fit_param=self.parameters_RTfit[key])[0])
-                Tc_err_low = np.append(Tc_err_low, self.RTfit.Tc(fit_param=self.parameters_RTfit[key])[1])
-                Tc_err_up = np.append(Tc_err_up, self.RTfit.Tc(fit_param=self.parameters_RTfit[key])[2])
+                Tc= np.append(Tc, self.RTfit.Tc(fit_param=self.parameters_RTfit[key], R_NC=R_NC)[0])
+                Tc_err_low = np.append(Tc_err_low, self.RTfit.Tc(fit_param=self.parameters_RTfit[key], R_NC=R_NC)[1])
+                Tc_err_up = np.append(Tc_err_up, self.RTfit.Tc(fit_param=self.parameters_RTfit[key], R_NC=R_NC)[2])
             if err is False:
                 return Tc
             else: return (Tc, Tc_err_low, Tc_err_up)
@@ -412,6 +417,8 @@ class RTfit():
             self.fit_function = self.richards
         elif self.fit_function_type == "gauss_cdf":
             self.fit_function = self.gauss_cdf
+        elif self.fit_function_type == "R_max/2":
+            self.fit_function = self.linear_function
         else:
             raise ValueError('only "richards" and "gauss_cdf" as possible fitting functions')
         self.fit_function_number_of_datapoints = 1000  # amount of data points to be placed between lower and upper T values for richards/gauss_cdf fit
@@ -452,16 +459,33 @@ class RTfit():
         Output: fit parameters for one RT sweep as dictionary
         Description: reduces the array according to fit limits. Depending on fit function, sets correct fitting parameters and calculates fit with curve_fit.'''
         T, R = Tools.select_values(self.T, self.R, fit_low_lim, fit_upp_lim)
+        print(self.fit_function_type)
         if T.size == 0:
             raise ValueError('chosen fit limits result in empty array. please change fit limits')
-        if self.fit_function_type is "richards":
+        if self.fit_function_type == "richards":
             self.__define_fitting_parameters_richards(R_NC, **self.__set_fit_parameters)
             self.fit_function = self.richards
-        elif self.fit_function_type is "gauss_cdf":
+        elif self.fit_function_type == "gauss_cdf":
             self.__define_fitting_parameters_gauss_cdf(R_NC, **self.__set_fit_parameters)
             self.fit_function = self.gauss_cdf
-        else: raise ValueError('only "richards" and "gauss_cdf" as possible fitting functions')
+        elif self.fit_function_type == "R_max/2":
+            # idx = self.T[bisect_left(self.R, Tools.selector(R_NC, np.max(self.R))/2)]  # index of temperature just below (or equal) where resistance reaches half its
+            idx = bisect_left(self.R, Tools.selector(R_NC, np.max(self.R))/2)  # index of temperature just below (or equal) where resistance reaches half its normal conducting value
+            if (idx == 0) or (idx >= np.size(T)-1):
+                raise IndexError('Not enough data points for extracting R_max/2. Possibly too restricted fitting range or empty array.')
+            print(idx)
+            T, R = (self.T[idx-1:idx+1], self.R[idx-1:idx+1]) # reduce arrays to fit to just 2 data points for linear interpolation
+            self.__define_fitting_parameters_R_max_half(**self.__set_fit_parameters)
+            self.fit_function = self.linear_function
+        else: raise ValueError('only "richards", "gauss_cdf" and "R_max/2" as possible fitting functions')
+        #############################
+        # BUG? In the next line, should it not be T and R instead of self.T and self.R because otherwise the range is not restricted to the selected one, right?
+        #############################
         popt, self.fit_covariance_matrix = curve_fit(self.fit_function, self.T, self.R, list(self.fit_param['start_values'].values()), **self.curve_fit_options)
+        print(popt)
+        popt, self.fit_covariance_matrix = curve_fit(self.fit_function, T, R, list(self.fit_param['start_values'].values()), **self.curve_fit_options)
+        print('Curve fit over selected T')
+        print(popt)
         self.fit_param['output'] = {key: value for key, value in zip(self.fit_param['start_values'].keys(), popt)}
         return self.fit_param['output']
 
@@ -476,7 +500,7 @@ class RTfit():
             k = R_NC  # upper asymptote
             nu = 1  # affects near which asymptote maximum growth occurs (nu is always > 0)
             m = a + (k-a)/np.float_power((c+1),(1/nu))  # shift on x-axis
-            t_2 = self.T[bisect_left(self.R, R_NC/2)]  # temperature whre resistance reaches half its normal conducting value
+            t_2 = self.T[bisect_left(self.R, R_NC/2)]  # temperature where resistance reaches half its normal conducting value
             b = 1/(m-t_2) * ( np.log( np.float_power((2*(k-a)/k),nu)-c )+np.log(q) ) # growth rate
             self.fit_param['start_values'] = {'b': b, 'm': m, 'nu': nu, 'k': k}
         elif kwargs != {}:  # use parameters set by user
@@ -513,6 +537,20 @@ class RTfit():
             self.__set_fit_parameters = {}
         self.curve_fit_options = {'maxfev': 1600, 'bounds': (-inf, inf)}
 
+    def __define_fitting_parameters_R_max_half(self, **kwargs):
+        '''Input: Optionally starting values for linear fit
+        Output: sets starting values of fit parameters (attribute)
+        Description: defines the start values if we want a simple linear interpolation between closest data
+        points to R_max/2. Calculates the starting values with every new self.R, self.T handed over to the class'''
+        self.fit_param['start_values'] = {'slope': 1.0, 'yintercept': -100}
+        if kwargs != {}:  # if fit starting values are handed over by the user, use them!
+            self.__define_fitting_parameters_R_max_half()  # ensure there are the necessary values
+            for key, value in kwargs.items():  # overwrite starting values handed over by the user
+                if key in ['slope', 'yintercept']:
+                    self.fit_param['start_values'][key] = value
+            self.__set_fit_parameters = {}
+        self.curve_fit_options = {'maxfev': 1600, 'bounds': (-inf, inf)}
+
     def set_fit_parameters(self, **kwargs):  # sets the fit parameters as method for comfortness
         self.__set_fit_parameters = kwargs
 
@@ -521,6 +559,9 @@ class RTfit():
 
     def gauss_cdf(self, x, scaling, mean, sigma):
         return scaling*norm.cdf(x, mean, sigma)
+
+    def linear_function(self, x, slope, yintercept):
+        return slope*x+yintercept
 
     def return_RTfit(self, eval_array = None, return_eval_array = False, fit_param=None):
         '''Input: T array to be evaluated, flag if eval_array should be returned, which fit parameters to use
@@ -536,23 +577,23 @@ class RTfit():
         else:
             return self.fit_function(eval_array, **fit_param)
 
-    def Tc(self, fit_param = None):
+################ maybe insert here R_NC as parameter to give over to TC function? and then call get_TC_RMax2 with that
+    def Tc(self, fit_param = None, R_NC = None):
         '''Input: fit parameters to use for determining the according Tc value of the RT-sweep
         Output: tuple (Tc, Tc_err_low, Tc_up_err): it is the transition temperature of an RT sweep
         Description: depending on the fit function, calls corresponding private method and returns Tc with the error'''
         fit_param = Tools.selector(fit_param, self.fit_param['output'])
-        if self.fit_function_type is 'richards':
+        if self.fit_function_type == 'richards':
             Tc = self.__get_Tc_richards(fit_param)
             return (Tc, *self.__Tc_error(Tc))
-        elif self.fit_function_type is 'gauss_cdf':
+        elif self.fit_function_type == 'gauss_cdf':
             Tc = self.__get_Tc_gauss_cdf(fit_param)
             return (Tc, *self.__Tc_error(Tc))
-        else: raise ValueError('only "richards" and "gauss_cdf" as possible fitting functions')
-
-    def __get_Tc_gauss_cdf(self, param):  # the Tc of the gaussian fit is described by the expected mean mu, since this always describes the halfpoint of a gaussian cdf
-        if 'mean' in param.keys():
-            return param['mean']
-        else: raise ValueError('no gaussian parameters found')
+        elif self.fit_function_type == 'R_max/2':
+            if R_NC == None: raise ValueError('No argument R_NC passed to RTfit.Tc although necessary for calculating Tc with R_max/2 method.')
+            Tc = self.__get_Tc_R_max_half(fit_param, R_NC)
+            return (Tc, *self.__Tc_error(Tc))
+        else: raise ValueError('only "richards", "gauss_cdf", and "R_max/2" as possible fitting functions')
 
     def __get_Tc_richards(self, param):  # the halfpoint value of the richards function is analytically calculated and is then returned
         if {'b', 'm', 'nu', 'k'}.issubset(list(param.keys())):
@@ -561,6 +602,17 @@ class RTfit():
             return m - 1/b*( np.log(np.float_power(2*(k-a)/k,nu)-c) + np.log(q) )  # analytical calculation of the halfpoint
         else:
             raise ValueError('no richards parameters found')
+
+    def __get_Tc_gauss_cdf(self, param):  # the Tc of the gaussian fit is described by the expected mean mu, since this always describes the halfpoint of a gaussian cdf
+        if 'mean' in param.keys():
+            return param['mean']
+        else: raise ValueError('no gaussian parameters found')
+
+
+    def __get_Tc_R_max_half(self, param, R_NC):  # the Tc is simply given by linear interpolation
+        if {'slope', 'yintercept'}.issubset(list(param.keys())):
+            return (R_NC/2 - param['yintercept'])/param['slope']
+        else: raise ValueError('no R_max/2 parameters found')
 
     def __Tc_error(self, Tc):
         '''Input: calculated Tc
@@ -580,7 +632,7 @@ class Tools():
     def selector(val, *args): # function selecting out of the passed args according to the control structure. outsourced since it was used a lot
         if val is None:       # to hand over properties, as they cannot be set as default values in the parameter definition
             return args[0]
-        elif val is 'all':
+        elif val == 'all':
             return args[1]
         else: return val
 
